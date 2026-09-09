@@ -223,7 +223,10 @@
   border: 1px solid var(--color-accent);
   background: white;
   color: var(--color-text);
-  font-size: 14px;
+  /* Mindestens 16px, sonst zoomt iOS Safari beim Antippen eines Feldes
+     automatisch hinein - das lässt Formulare auf dem iPhone "kaputt"
+     wirken und macht das Ausfüllen umständlich. */
+  font-size: 16px;
 }
 
 .checkboxGroup {
@@ -274,4 +277,39 @@
   text-align: center;
   padding: 40px 20px;
   color: var(--color-muted);
+}
+
+/* Handy-Ansicht: die zweispaltigen Formularzeilen (Vorname/Nachname,
+   PLZ/Ort etc.) werden auf schmalen Bildschirmen sonst so schmal, dass die
+   Eingabefelder kaum noch nutzbar sind - hier auf eine Spalte umstellen und
+   die Innenabstände etwas verkleinern, damit mehr Platz fürs Ausfüllen
+   bleibt. Das eingebettete iFrame ist bereits auf width:100% eingestellt,
+   diese Anpassung sorgt zusätzlich für die Innenraum-Aufteilung. */
+@media (max-width: 600px) {
+  .container {
+    padding: 12px;
+  }
+
+  .form {
+    padding: 20px 16px;
+  }
+
+  .row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .termineBox {
+    padding: 14px 16px;
+    gap: 10px;
+  }
+
+  .termineText,
+  .termineDatesLine {
+    font-size: 15px;
+  }
+
+  .termineTextBold {
+    font-size: 16px;
+  }
 }

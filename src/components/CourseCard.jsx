@@ -118,10 +118,28 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
       return
     }
 
-    const warnung =
+    // Prüfen, ob dieser Kurs Teil eines Kombi-Pakets ist - kurs_pakete
+    // verweist per ON DELETE CASCADE auf seine beiden Kurse, ein Paket würde
+    // beim Löschen dieses Kurses also STILLSCHWEIGEND mit verschwinden.
+    const { data: betroffenePakete, error: paketeError } = await supabase
+      .from('kurs_pakete')
+      .select('id, name')
+      .or(`kurs_id_1.eq.${course.id},kurs_id_2.eq.${course.id}`)
+
+    if (paketeError) {
+      alert('Löschen erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+
+    let warnung =
       count > 0
         ? `Dieser Kurs hat noch ${count} Anmeldung(en). Beim Löschen werden diese Anmeldungen unwiderruflich mitgelöscht. Kurs "${course.name}" trotzdem löschen?`
         : `Kurs "${course.name}" wirklich löschen? Das kann nicht rückgängig gemacht werden.`
+
+    if (betroffenePakete && betroffenePakete.length > 0) {
+      const namen = betroffenePakete.map((p) => p.name).join(', ')
+      warnung += `\n\nACHTUNG: Dieser Kurs ist Teil von ${betroffenePakete.length} Kombi-Paket(en) (${namen}). Diese Pakete werden beim Löschen automatisch mit entfernt!`
+    }
 
     if (!window.confirm(warnung)) return
 

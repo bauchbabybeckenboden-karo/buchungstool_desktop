@@ -77,6 +77,15 @@ export default function Admin() {
         angezeigt wird.
       </p>
 
+      <p className={styles.hint}>
+        📅 Alle Kurstermine als Google-Kalender-Feed: In Google Kalender einmalig unter "Weitere Kalender" → "Per
+        URL" folgende Adresse eintragen (funktioniert nur am Desktop-Browser, danach erscheint der Kalender auch in
+        der App) —{' '}
+        <code>https://bauch-baby-beckenboden-buchungen.netlify.app/.netlify/functions/kalender-feed</code>. Neu
+        angelegte Kurse tauchen dann automatisch auf, sobald Google den Feed das nächste Mal abruft (kann ein paar
+        Stunden dauern, nicht sofort).
+      </p>
+
       {loading && <p className={styles.hint}>Lade Kurse …</p>}
       {loadError && <p className={styles.hint}>Kurse konnten nicht geladen werden: {loadError}</p>}
 
