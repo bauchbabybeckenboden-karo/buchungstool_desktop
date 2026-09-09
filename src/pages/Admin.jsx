@@ -3,6 +3,7 @@ import styles from './Admin.module.css'
 import { COURSE_TYPES } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 import CourseCard from '../components/CourseCard.jsx'
+import ImportPanel from '../components/ImportPanel.jsx'
 
 export default function Admin() {
   const [courses, setCourses] = useState([])
@@ -76,6 +77,8 @@ export default function Admin() {
 
       {loading && <p className={styles.hint}>Lade Kurse …</p>}
       {loadError && <p className={styles.hint}>Kurse konnten nicht geladen werden: {loadError}</p>}
+
+      <ImportPanel onImported={loadCourses} />
 
       <div className={styles.typeTabs}>
         {COURSE_TYPES.map((type) => (
