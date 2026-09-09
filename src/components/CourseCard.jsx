@@ -1,0 +1,136 @@
+import { useEffect, useState } from 'react'
+import styles from './CourseCard.module.css'
+import { getCourseTypeBySlug } from '../courseTypes.js'
+import { supabase } from '../supabase.js'
+
+export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSave, onReload }) {
+  const [showParticipants, setShowParticipants] = useState(false)
+  const [participants, setParticipants] = useState([])
+  const [participantsError, setParticipantsError] = useState(null)
+  const [participantsLoading, setParticipantsLoading] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const courseType = getCourseTypeBySlug(course.course_type)
+
+  useEffect(() => {
+    if (showParticipants) loadParticipants()
+  }, [showParticipants])
+
+  async function loadParticipants() {
+    setParticipantsLoading(true)
+    const { data, error } = await supabase.from('buchungen').select('*').eq('kurs_id', course.id)
+    if (error) setParticipantsError('Anmeldeliste erfordert Admin-Login (noch einzurichten).')
+    else {
+      setParticipants(data || [])
+      setParticipantsError(null)
+    }
+    setParticipantsLoading(false)
+  }
+
+  async function handleField(field, value) {
+    onUpdateLocal(course.id, { [field]: value })
+    const error = await onSave(course.id, { [field]: value })
+    setSaveError(error ? 'Speichern erfordert Admin-Login (noch einzurichten).' : null)
+  }
+
+  async function removeParticipant(id) {
+    const { error } = await supabase.from('buchungen').delete().eq('id', id)
+    if (error) {
+      alert('Entfernen erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+    loadParticipants()
+  }
+
+  async function moveParticipant(id, toCourseId) {
+    const { error } = await supabase.from('buchungen').update({ kurs_id: toCourseId }).eq('id', id)
+    if (error) {
+      alert('Verschieben erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+    loadParticipants()
+    if (onReload) onReload()
+  }
+
+  return (
+    <div className={styles.card}>
+      <div className={styles.editFields}>
+        <div className={styles.fieldFull}>
+          <label>Kursname</label>
+          <input value={course.name} onChange={(e) => handleField('name', e.target.value)} />
+        </div>
+        <div>
+          <label>Anzahl Termine</label>
+          <input type="number" value={course.termine} onChange={(e) => handleField('termine', Number(e.target.value))} />
+        </div>
+        <div>
+          <label>Dauer (min)</label>
+          <input type="number" value={course.dauer_min} onChange={(e) => handleField('dauer_min', Number(e.target.value))} />
+        </div>
+        <div>
+          <label>Preis (€)</label>
+          <input type="number" value={course.preis} onChange={(e) => handleField('preis', Number(e.target.value))} />
+        </div>
+        <div>
+          <label>Max. Teilnehmerinnen</label>
+          <input type="number" value={course.max_teilnehmerinnen} onChange={(e) => handleField('max_teilnehmerinnen', Number(e.target.value))} />
+        </div>
+      </div>
+
+      {saveError && <span style={{ fontSize: '11px', color: '#8b6464' }}>{saveError}</span>}
+
+      <div className={styles.participantsRow}>
+        <span className={styles.badge}>
+          {showParticipants && !participantsError ? `${participants.length} / ${course.max_teilnehmerinnen} Plätze belegt` : 'Belegung ansehen'}
+        </span>
+        <button className={styles.link} onClick={() => setShowParticipants((v) => !v)}>
+          {showParticipants ? 'Teilnehmerinnen ausblenden' : 'Teilnehmerinnen anzeigen'}
+        </button>
+      </div>
+
+      {showParticipants && (
+        <div className={styles.participantsList}>
+          {participantsLoading && <span>Lade …</span>}
+          {participantsError && <span>{participantsError}</span>}
+          {!participantsLoading && !participantsError && participants.length === 0 && <span>Noch keine Anmeldungen.</span>}
+          {!participantsError && participants.map((p) => (
+            <div className={styles.participantEntry} key={p.id}>
+              <span>{p.vorname} {p.nachname}</span>
+              <div className={styles.participantActions}>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) moveParticipant(p.id, e.target.value)
+                  }}
+                >
+                  <option value="">In diesem Kurs</option>
+                  {siblingCourses
+                    .filter((c) => c.id !== course.id)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>→ {c.name}</option>
+                    ))}
+                </select>
+                <button className={styles.removeBtn} onClick={() => removeParticipant(p.id)}>
+                  Entfernen
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className={styles.urlHint}>
+        Wird angezeigt auf: bauch-baby-beckenboden.de{courseType?.websitePath}
+      </div>
+
+      <div className={styles.checkboxRow}>
+        <input
+          type="checkbox"
+          id={`visible-${course.id}`}
+          checked={course.sichtbar_auf_website}
+          onChange={(e) => handleField('sichtbar_auf_website', e.target.checked)}
+        />
+        <label htmlFor={`visible-${course.id}`}>Auf Website zeigen</label>
+      </div>
+    </div>
+  )
+}
