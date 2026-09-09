@@ -63,6 +63,28 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     if (onReload) onReload()
   }
 
+  async function duplicateCourse() {
+    // Kopiert alle Kursdaten in einen neuen, noch unsichtbaren Kurs - praktisch
+    // z.B. um aus einem Präsenzkurs schnell die Online-Variante abzuleiten
+    // (danach nur noch "Online-Kurs" ankreuzen und ggf. Uhrzeit anpassen).
+    const {
+      id, created_at, ...kopierbareFelder
+    } = course
+
+    const { error } = await supabase.from('kurse').insert({
+      ...kopierbareFelder,
+      name: `${course.name} (Kopie)`,
+      sichtbar_auf_website: false,
+      source_gruppen_key: null,
+    })
+
+    if (error) {
+      alert('Duplizieren erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+    if (onReload) onReload()
+  }
+
   async function deleteCourse() {
     // Vorher zählen, wie viele Anmeldungen betroffen wären - beim Löschen
     // eines Kurses werden über die Datenbank-Verknüpfung automatisch auch
@@ -210,6 +232,16 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
       <div className={styles.checkboxRow}>
         <input
           type="checkbox"
+          id={`online-${course.id}`}
+          checked={course.ist_online || false}
+          onChange={(e) => handleField('ist_online', e.target.checked)}
+        />
+        <label htmlFor={`online-${course.id}`}>Online-Kurs (zeigt "ONLINE" auf der Kachel)</label>
+      </div>
+
+      <div className={styles.checkboxRow}>
+        <input
+          type="checkbox"
           id={`visible-${course.id}`}
           checked={course.sichtbar_auf_website}
           onChange={(e) => handleField('sichtbar_auf_website', e.target.checked)}
@@ -217,9 +249,14 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
         <label htmlFor={`visible-${course.id}`}>Auf Website zeigen</label>
       </div>
 
-      <button type="button" className={styles.deleteButton} onClick={deleteCourse}>
-        Kurs löschen
-      </button>
+      <div className={styles.cardActions}>
+        <button type="button" className={styles.duplicateButton} onClick={duplicateCourse}>
+          Duplizieren
+        </button>
+        <button type="button" className={styles.deleteButton} onClick={deleteCourse}>
+          Kurs löschen
+        </button>
+      </div>
     </div>
   )
 }

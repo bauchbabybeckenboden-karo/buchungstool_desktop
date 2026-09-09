@@ -121,6 +121,7 @@ export default function ImportPanel({ onImported }) {
               end_datum: endDatum,
               uhrzeit: gruppe.uhrzeit || '',
               zusatz_course_types: [],
+              ist_online: false,
               termin_daten: termineDesDurchlaufs,
             },
           }
@@ -153,7 +154,7 @@ export default function ImportPanel({ onImported }) {
   }
 
   async function importRow(row) {
-    const { course_type, name, termine, preis, max_teilnehmerinnen, start_datum, end_datum, uhrzeit, zusatz_course_types, termin_daten } = row.form
+    const { course_type, name, termine, preis, max_teilnehmerinnen, start_datum, end_datum, uhrzeit, zusatz_course_types, termin_daten, ist_online } = row.form
 
     if (!course_type || !name || !termine || preis === '' || !max_teilnehmerinnen) {
       alert('Bitte alle Felder ausfüllen (Kursart, Name, Termine, Preis, max. Teilnehmerinnen) bevor du übernimmst.')
@@ -171,6 +172,7 @@ export default function ImportPanel({ onImported }) {
       uhrzeit: uhrzeit || null,
       zusatz_course_types: zusatz_course_types || [],
       termin_daten: termin_daten && termin_daten.length ? termin_daten : null,
+      ist_online: ist_online || false,
       sichtbar_auf_website: false,
       source_gruppen_key: row.key,
     })
@@ -303,6 +305,15 @@ export default function ImportPanel({ onImported }) {
                   {row.form.termin_daten.map((d) => d.split('-').reverse().join('.')).join(', ')}
                 </div>
               )}
+
+              <label className={styles.comboOption}>
+                <input
+                  type="checkbox"
+                  checked={row.form.ist_online || false}
+                  onChange={(e) => updateForm(row.key, { ist_online: e.target.checked })}
+                />
+                Online-Kurs
+              </label>
 
               <button className={styles.importButton} onClick={() => importRow(row)}>
                 Als Kurs übernehmen

@@ -216,6 +216,11 @@
   cursor: pointer;
 }
 
+.cardActions {
+  display: flex;
+  gap: 10px;
+}
+
 .deleteButton {
   align-self: flex-start;
   background: none;
@@ -228,5 +233,20 @@
 
 .deleteButton:hover {
   background: #b25858;
+  color: white;
+}
+
+.duplicateButton {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--color-main);
+  color: var(--color-main);
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.duplicateButton:hover {
+  background: var(--color-main);
   color: white;
 }
