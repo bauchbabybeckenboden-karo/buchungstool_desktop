@@ -56,7 +56,7 @@ export default function ImportPanel({ onImported }) {
     const kurse = kurseRes.data || []
 
     const candidates = Object.entries(gruppen || {})
-      .map(([groupId, gruppe]) => {
+      .flatMap(([groupId, gruppe]) => {
         const praefix = groupId + '_'
 
         // Welche Durchlauf-Start-Daten dieser Gruppe wurden schon importiert?
@@ -75,62 +75,57 @@ export default function ImportPanel({ onImported }) {
         const durchlaeufe = ermittleDurchlaeufe(gruppe, groupId, notizen)
         const removedForGruppe = (removed || {})[groupId] || []
 
-        // Ersten noch nicht importierten, vollständig markierten Durchlauf
-        // (Start UND Ende gesetzt) mit mindestens einem echten Termin finden.
-        let gewaehlterDurchlauf = null
-        let termineDesDurchlaufs = null
-        for (const dl of durchlaeufe) {
-          if (!dl.ende || importierteStarts.has(dl.start)) continue
+        // ALLE noch nicht importierten, vollständig markierten Durchläufe
+        // (Start UND Ende gesetzt) mit mindestens einem echten Termin sammeln -
+        // nicht nur den ersten. Eine Gruppe kann mehrere offene, bereits
+        // durchnotierte Durchläufe gleichzeitig haben (z.B. weil ein älterer
+        // Durchlauf aus dem Buchungstool gelöscht wurde); dann sollen alle
+        // als eigene Karten erscheinen, damit Karo den richtigen auswählen kann.
+        const kandidatenTermine = []
+        durchlaeufe.forEach((dl) => {
+          if (!dl.ende || importierteStarts.has(dl.start)) return
           const termine = echteTermineFuerDurchlauf(gruppe, dl, removedForGruppe)
-          if (termine && termine.length > 0) {
-            gewaehlterDurchlauf = dl
-            termineDesDurchlaufs = termine
-            break
-          }
-        }
+          if (termine && termine.length > 0) kandidatenTermine.push(termine)
+        })
 
         // Fallback nur für eine komplett neue Gruppe: noch nie importiert
         // UND noch keine einzige "Ende"-Notiz gesetzt -> ersten 5 Termine ab
         // Gruppenstart vorschlagen, damit die Gruppe nicht spurlos fehlt,
         // bevor Karo überhaupt eine Notiz gesetzt hat.
-        if (!gewaehlterDurchlauf && importierteStarts.size === 0 && durchlaeufe.every((dl) => !dl.ende)) {
+        if (kandidatenTermine.length === 0 && importierteStarts.size === 0 && durchlaeufe.every((dl) => !dl.ende)) {
           const removedSet = new Set(removedForGruppe)
           const alleDaten = (gruppe.dates || []).filter((d) => !removedSet.has(d))
           const startDatum = gruppe.start || alleDaten[0]
           const abStart = alleDaten.filter((d) => d >= startDatum)
-          if (abStart.length > 0) {
-            gewaehlterDurchlauf = { start: startDatum, ende: null }
-            termineDesDurchlaufs = abStart.slice(0, 5)
+          if (abStart.length > 0) kandidatenTermine.push(abStart.slice(0, 5))
+        }
+
+        return kandidatenTermine.map((termineDesDurchlaufs) => {
+          const termineAnzahl = termineDesDurchlaufs.length
+          const courseTypeGuess = guessCourseType(gruppe.name)
+          const startDatum = termineDesDurchlaufs[0]
+          const endDatum = termineDesDurchlaufs[termineDesDurchlaufs.length - 1]
+
+          return {
+            key: groupId + '_' + startDatum,
+            groupId,
+            gruppe,
+            termineDesDurchlaufs,
+            form: {
+              course_type: courseTypeGuess,
+              name: gruppe.name,
+              termine: termineAnzahl,
+              preis: calculatePreis(courseTypeGuess, termineAnzahl, []) ?? '',
+              max_teilnehmerinnen: '',
+              start_datum: startDatum,
+              end_datum: endDatum,
+              uhrzeit: gruppe.uhrzeit || '',
+              zusatz_course_types: [],
+              termin_daten: termineDesDurchlaufs,
+            },
           }
-        }
-
-        if (!gewaehlterDurchlauf || !termineDesDurchlaufs || termineDesDurchlaufs.length === 0) return null
-
-        const termineAnzahl = termineDesDurchlaufs.length
-        const courseTypeGuess = guessCourseType(gruppe.name)
-        const startDatum = termineDesDurchlaufs[0]
-        const endDatum = termineDesDurchlaufs[termineDesDurchlaufs.length - 1]
-
-        return {
-          key: groupId + '_' + startDatum,
-          groupId,
-          gruppe,
-          termineDesDurchlaufs,
-          form: {
-            course_type: courseTypeGuess,
-            name: gruppe.name,
-            termine: termineAnzahl,
-            preis: calculatePreis(courseTypeGuess, termineAnzahl, []) ?? '',
-            max_teilnehmerinnen: '',
-            start_datum: startDatum,
-            end_datum: endDatum,
-            uhrzeit: gruppe.uhrzeit || '',
-            zusatz_course_types: [],
-            termin_daten: termineDesDurchlaufs,
-          },
-        }
+        })
       })
-      .filter(Boolean)
 
     setRows(candidates)
     setLoading(false)
