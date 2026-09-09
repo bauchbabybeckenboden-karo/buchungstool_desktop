@@ -63,6 +63,35 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     if (onReload) onReload()
   }
 
+  async function deleteCourse() {
+    // Vorher zählen, wie viele Anmeldungen betroffen wären - beim Löschen
+    // eines Kurses werden über die Datenbank-Verknüpfung automatisch auch
+    // ALLE dazugehörigen Anmeldungen mitgelöscht (unwiderruflich).
+    const { count, error: countError } = await supabase
+      .from('buchungen')
+      .select('id', { count: 'exact', head: true })
+      .eq('kurs_id', course.id)
+
+    if (countError) {
+      alert('Löschen erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+
+    const warnung =
+      count > 0
+        ? `Dieser Kurs hat noch ${count} Anmeldung(en). Beim Löschen werden diese Anmeldungen unwiderruflich mitgelöscht. Kurs "${course.name}" trotzdem löschen?`
+        : `Kurs "${course.name}" wirklich löschen? Das kann nicht rückgängig gemacht werden.`
+
+    if (!window.confirm(warnung)) return
+
+    const { error } = await supabase.from('kurse').delete().eq('id', course.id)
+    if (error) {
+      alert('Löschen erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+    if (onReload) onReload()
+  }
+
   return (
     <div className={styles.card}>
       <div className={styles.editFields}>
@@ -187,6 +216,10 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
         />
         <label htmlFor={`visible-${course.id}`}>Auf Website zeigen</label>
       </div>
+
+      <button type="button" className={styles.deleteButton} onClick={deleteCourse}>
+        Kurs löschen
+      </button>
     </div>
   )
 }

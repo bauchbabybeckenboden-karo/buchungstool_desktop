@@ -215,3 +215,18 @@
   font-size: 13px;
   cursor: pointer;
 }
+
+.deleteButton {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid #b25858;
+  color: #b25858;
+  font-size: 12px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.deleteButton:hover {
+  background: #b25858;
+  color: white;
+}
