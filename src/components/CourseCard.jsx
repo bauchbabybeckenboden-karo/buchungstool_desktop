@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import styles from './CourseCard.module.css'
 import { getCourseTypeBySlug, COURSE_TYPES } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
+import { calculatePreis } from '../pricing.js'
 
 export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSave, onReload }) {
   const [showParticipants, setShowParticipants] = useState(false)
@@ -36,6 +37,11 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     const current = course.zusatz_course_types || []
     const next = current.includes(slug) ? current.filter((s) => s !== slug) : [...current, slug]
     handleField('zusatz_course_types', next)
+  }
+
+  function recalcPreis() {
+    const neuerPreis = calculatePreis(course.course_type, course.termine, course.zusatz_course_types || [])
+    if (neuerPreis !== null) handleField('preis', neuerPreis)
   }
 
   async function removeParticipant(id) {
@@ -74,7 +80,12 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
         </div>
         <div>
           <label>Preis (€)</label>
-          <input type="number" value={course.preis} onChange={(e) => handleField('preis', Number(e.target.value))} />
+          <div className={styles.preisRow}>
+            <input type="number" value={course.preis} onChange={(e) => handleField('preis', Number(e.target.value))} />
+            <button type="button" className={styles.calcButton} onClick={recalcPreis} title="Nach Preisliste berechnen">
+              ↻
+            </button>
+          </div>
         </div>
         <div>
           <label>Max. Teilnehmerinnen</label>

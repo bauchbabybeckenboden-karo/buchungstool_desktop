@@ -3,6 +3,7 @@ import styles from './ImportPanel.module.css'
 import { supabase } from '../supabase.js'
 import { COURSE_TYPES } from '../courseTypes.js'
 import { guessCourseType, wochentagLabel, endDateForTermine } from '../importParser.js'
+import { calculatePreis } from '../pricing.js'
 
 export default function ImportPanel({ onImported }) {
   const [open, setOpen] = useState(false)
@@ -39,14 +40,15 @@ export default function ImportPanel({ onImported }) {
       .filter(([key]) => !alreadyImported.has(key))
       .map(([key, gruppe]) => {
         const defaultTermine = 5
+        const courseTypeGuess = guessCourseType(gruppe.name)
         return {
           key,
           gruppe,
           form: {
-            course_type: guessCourseType(gruppe.name),
+            course_type: courseTypeGuess,
             name: gruppe.name,
             termine: defaultTermine,
-            preis: '',
+            preis: calculatePreis(courseTypeGuess, defaultTermine, []) ?? '',
             max_teilnehmerinnen: '',
             start_datum: gruppe.start || '',
             end_datum: endDateForTermine(gruppe.dates, defaultTermine),
@@ -67,6 +69,11 @@ export default function ImportPanel({ onImported }) {
         // Wenn sich die Anzahl Termine ändert, End-Datum aus der echten Terminliste neu berechnen.
         if ('termine' in changes) {
           form.end_datum = endDateForTermine(r.gruppe.dates, changes.termine)
+        }
+        // Preis automatisch nach Karos Preisformel neu berechnen, wenn Kursart/Termine/Kombikurs sich ändern.
+        if ('termine' in changes || 'course_type' in changes || 'zusatz_course_types' in changes) {
+          const neuerPreis = calculatePreis(form.course_type, form.termine, form.zusatz_course_types)
+          if (neuerPreis !== null) form.preis = neuerPreis
         }
         return { ...r, form }
       })
@@ -183,7 +190,7 @@ export default function ImportPanel({ onImported }) {
                   />
                 </div>
                 <div>
-                  <label>Preis (€)</label>
+                  <label>Preis (€, automatisch)</label>
                   <input
                     type="number"
                     value={row.form.preis}
