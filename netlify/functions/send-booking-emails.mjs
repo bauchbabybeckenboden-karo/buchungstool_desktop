@@ -6,6 +6,14 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM = "Bauch Baby Beckenboden <kontakt@bauch-baby-beckenboden.com>";
 const ADMIN_EMAIL = "kontakt@bauch-baby-beckenboden.com";
 
+// Feste Angaben für die Bestätigungsmail (aktuell für alle Kurse gleich).
+const BANK = {
+  kontoinhaber: "Karoline Hartwig",
+  iban: "DE08 5009 0500 0005 5859 14",
+  bic: "GENODEF1S12",
+};
+const FRAGEBOGEN_URL = "https://bauch-baby-beckenboden-weiterleitung.netlify.app";
+
 const COURSE_TYPE_LABELS = {
   mamafit: "Mamafit",
   schwangerfit: "Schwangerfit",
@@ -93,28 +101,53 @@ export default async (req) => {
         : `${formatDatumKurz(kurs.start_datum)}<br/>Jeder Woche am ${wochentagLang} für ${kurs.termine} Mal`;
 
     // --- 1. Bestätigung an die Teilnehmerin ---
+    const terminZeilen =
+      Array.isArray(kurs.termin_daten) && kurs.termin_daten.length > 0
+        ? kurs.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
+        : [formatDatumKurz(kurs.start_datum), kurs.end_datum ? `bis ${formatDatumKurz(kurs.end_datum)}` : ""]
+            .filter(Boolean)
+            .join(" ");
+    const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${kursBezeichnung}`;
+
     const teilnehmerinHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#f5ede8;padding:24px;">
-        <div style="background:linear-gradient(135deg,#8b6464,#7d5858);color:white;padding:24px;text-align:center;">
-          <h1 style="margin:0;font-size:20px;">Bauch · Baby · Beckenboden</h1>
-        </div>
-        <div style="background:white;padding:24px;margin-top:16px;">
-          <h2 style="margin-top:0;color:#3d2b2b;">Danke für deine Anmeldung, ${escapeHtml(buchung.vorname)}!</h2>
-          <p style="color:#6d4f4f;">Du bist angemeldet für:</p>
-          <p style="font-size:16px;font-weight:bold;color:#8b6464;">${escapeHtml(kursBezeichnung)}</p>
-          <p style="color:#3d2b2b;">
-            Start: ${formatDatumKurz(kurs.start_datum)}${kurs.uhrzeit ? `, ${kurs.uhrzeit}${uhrzeitEnde ? " - " + uhrzeitEnde : ""} Uhr` : ""}<br/>
-            ${kurs.end_datum ? `Letzter Termin: ${formatDatumKurz(kurs.end_datum)}<br/>` : ""}
-            Preis: ${kurs.preis} €
-          </p>
-          ${
-            Array.isArray(kurs.termin_daten) && kurs.termin_daten.length > 0
-              ? `<p style="color:#3d2b2b;font-size:13px;"><strong>Alle Termine:</strong><br/>${kurs.termin_daten
-                  .map((d) => formatDatumKurz(d))
-                  .join("<br/>")}</p>`
-              : ""
-          }
-          <p style="color:#6d4f4f;font-size:13px;">Bei Fragen melde dich gerne unter kontakt@bauch-baby-beckenboden.com.</p>
+      <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5ede8;padding:32px 12px;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #ece1da;">
+          <div style="background:linear-gradient(135deg,#8b6464,#7d5858);padding:32px 36px;color:#f7f2ee;">
+            <p style="margin:0 0 6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#e3cfcf;">Deine Anmeldung im Überblick</p>
+            <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
+          </div>
+          <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
+            <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zu <strong style="font-weight:600;">${escapeHtml(courseTypeLabel)}</strong>!</p>
+
+            <hr style="border:none;border-top:1px solid #ece1da;margin:24px 0;"/>
+
+            <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Wie es weitergeht</p>
+            <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${kurs.preis} €</strong> auf folgendes Konto:</p>
+            <table style="width:100%;font-size:13px;margin:0 0 18px;border-collapse:collapse;">
+              <tr><td style="padding:2px 0;color:#8a7060;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
+              <tr><td style="padding:2px 0;color:#8a7060;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
+              <tr><td style="padding:2px 0;color:#8a7060;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
+              <tr><td style="padding:2px 0;color:#8a7060;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
+            </table>
+            <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus.</p>
+
+            <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst du wöchentlich daran erinnert, dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
+
+            <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Deine Kurstermine</p>
+            <p style="margin:0 0 18px;font-size:14px;">
+              ${terminZeilen}<br/>
+              ${kurs.uhrzeit ? `${kurs.uhrzeit}${uhrzeitEnde ? " - " + uhrzeitEnde : ""} Uhr<br/>` : ""}
+              Preis: ${kurs.preis} €<br/>
+              <span style="font-size:12px;color:#8a7060;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
+            </p>
+
+            <p style="margin:0 0 24px;">💕 Solltest du Fragen haben, melde dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für dein Vertrauen 💕</p>
+
+            <p style="margin:0;">Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
+          </div>
+          <div style="background:#f5ede8;padding:20px 36px;font-size:12px;color:#8a7060;text-align:center;line-height:1.6;">
+            Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8a7060;">bauch-baby-beckenboden.de</a>
+          </div>
         </div>
       </div>`;
 
