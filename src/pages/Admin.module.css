@@ -1,0 +1,66 @@
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.header {
+  background: linear-gradient(135deg, var(--color-main) 0%, var(--color-main-dark) 100%);
+  color: white;
+  padding: 50px 30px;
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.header h1 {
+  font-size: 32px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.hint {
+  margin-bottom: 25px;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+.typeTabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 30px;
+  border-bottom: 2px solid var(--color-accent);
+  flex-wrap: wrap;
+}
+
+.typeTab {
+  padding: 12px 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-main);
+  border-bottom: 3px solid transparent;
+  font-weight: 500;
+}
+
+.typeTab.active {
+  border-bottom-color: var(--color-main);
+}
+
+.courseList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.addButton {
+  margin-top: 20px;
+  background: none;
+  border: 2px dashed var(--color-accent);
+  color: var(--color-main);
+  padding: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}

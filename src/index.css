@@ -1,0 +1,26 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background-color: #e8d5d0;
+  color: #3d2b2b;
+  line-height: 1.6;
+}
+
+:root {
+  --color-main: #8b6464;
+  --color-main-dark: #7d5858;
+  --color-bg: #e8d5d0;
+  --color-text: #3d2b2b;
+  --color-accent: #c4a0a0;
+  --color-muted: #6d4f4f;
+  --color-box: #f5ede8;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+}
