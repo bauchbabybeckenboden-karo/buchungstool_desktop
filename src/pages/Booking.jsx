@@ -396,6 +396,27 @@ export default function Booking() {
     return <div className={styles.container}>Unbekannter Kurstyp.</div>
   }
 
+  // Auf dem Handy (v.a. mobiles Netz) kann eine einzelne Anfrage mal kurz
+  // hängen bleiben - bevor wir der Nutzerin einen Fehler anzeigen, probieren
+  // wir es nach einer kurzen Pause automatisch noch einmal. Fehler werden
+  // zusätzlich geloggt und ihre Meldung wird der Nutzerin mit angezeigt,
+  // damit ein evtl. wiederkehrendes Problem sich anhand eines Screenshots
+  // genauer diagnostizieren lässt.
+  async function insertBuchungMitRetry(daten) {
+    let { data, error } = await supabase.from('buchungen').insert(daten).select().single()
+    if (error) {
+      console.error('Buchung fehlgeschlagen, versuche erneut:', error)
+      await new Promise((resolve) => setTimeout(resolve, 1200))
+      ;({ data, error } = await supabase.from('buchungen').insert(daten).select().single())
+      if (error) console.error('Buchung auch beim zweiten Versuch fehlgeschlagen:', error)
+    }
+    return { data, error }
+  }
+
+  function fehlermeldung(error) {
+    return `Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut. (${error?.message || 'unbekannter Fehler'})`
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setSubmitting(true)
@@ -421,26 +442,28 @@ export default function Booking() {
     // Anmeldung fehl, wird die erste wieder entfernt, damit keine halbe
     // Kombi-Buchung übrig bleibt.
     if (selectedPaket) {
-      const { data: erste, error: fehler1 } = await supabase
-        .from('buchungen')
-        .insert({ ...basisDaten, kurs_id: selectedPaket.kurs1.id, paket_id: selectedPaket.id })
-        .select()
-        .single()
+      const { data: erste, error: fehler1 } = await insertBuchungMitRetry({
+        ...basisDaten,
+        kurs_id: selectedPaket.kurs1.id,
+        paket_id: selectedPaket.id,
+      })
 
       if (fehler1) {
         setSubmitting(false)
-        setSubmitError('Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut.')
+        setSubmitError(fehlermeldung(fehler1))
         return
       }
 
-      const { error: fehler2 } = await supabase
-        .from('buchungen')
-        .insert({ ...basisDaten, kurs_id: selectedPaket.kurs2.id, paket_id: selectedPaket.id })
+      const { error: fehler2 } = await insertBuchungMitRetry({
+        ...basisDaten,
+        kurs_id: selectedPaket.kurs2.id,
+        paket_id: selectedPaket.id,
+      })
 
       if (fehler2) {
         await supabase.from('buchungen').delete().eq('id', erste.id)
         setSubmitting(false)
-        setSubmitError('Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut.')
+        setSubmitError(fehlermeldung(fehler2))
         return
       }
 
@@ -458,11 +481,11 @@ export default function Booking() {
       return
     }
 
-    const { error } = await supabase.from('buchungen').insert({ ...basisDaten, kurs_id: selectedCourse.id })
+    const { error } = await insertBuchungMitRetry({ ...basisDaten, kurs_id: selectedCourse.id })
 
     setSubmitting(false)
     if (error) {
-      setSubmitError('Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut.')
+      setSubmitError(fehlermeldung(error))
       return
     }
     setSubmitted(true)
