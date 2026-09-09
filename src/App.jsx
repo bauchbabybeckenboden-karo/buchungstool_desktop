@@ -3,20 +3,24 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import Admin from './pages/Admin.jsx'
 import Booking from './pages/Booking.jsx'
 import Login from './pages/Login.jsx'
+import SetNewPassword from './pages/SetNewPassword.jsx'
 import { supabase } from './supabase.js'
 
 function AdminGate() {
   const [session, setSession] = useState(undefined) // undefined = wird geladen
+  const [recovery, setRecovery] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
       setSession(newSession)
     })
     return () => listener.subscription.unsubscribe()
   }, [])
 
   if (session === undefined) return null // kurzer Ladezustand
+  if (recovery) return <SetNewPassword onDone={() => setRecovery(false)} />
   if (!session) return <Login />
   return <Admin />
 }
