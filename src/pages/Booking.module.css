@@ -66,6 +66,22 @@
   font-weight: 600;
 }
 
+.terminListe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.terminDatum {
+  font-size: 12px;
+  color: var(--color-text);
+  background: var(--color-box);
+  border: 1px solid var(--color-accent);
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
 .form {
   background: white;
   border-left: 4px solid var(--color-main);

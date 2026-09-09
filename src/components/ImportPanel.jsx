@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import styles from './ImportPanel.module.css'
 import { supabase } from '../supabase.js'
 import { COURSE_TYPES } from '../courseTypes.js'
-import { guessCourseType, wochentagLabel, endDateForTermine } from '../importParser.js'
+import { guessCourseType, wochentagLabel, endDateForTermine, datesForTermine } from '../importParser.js'
 import { calculatePreis } from '../pricing.js'
 
 export default function ImportPanel({ onImported }) {
@@ -52,7 +52,9 @@ export default function ImportPanel({ onImported }) {
             max_teilnehmerinnen: '',
             start_datum: gruppe.start || '',
             end_datum: endDateForTermine(gruppe.dates, defaultTermine),
+            uhrzeit: gruppe.uhrzeit || '',
             zusatz_course_types: [],
+            termin_daten: datesForTermine(gruppe.dates, defaultTermine),
           },
         }
       })
@@ -66,9 +68,10 @@ export default function ImportPanel({ onImported }) {
       prev.map((r) => {
         if (r.key !== key) return r
         const form = { ...r.form, ...changes }
-        // Wenn sich die Anzahl Termine ändert, End-Datum aus der echten Terminliste neu berechnen.
+        // Wenn sich die Anzahl Termine ändert, End-Datum und Einzeltermine aus der echten Terminliste neu berechnen.
         if ('termine' in changes) {
           form.end_datum = endDateForTermine(r.gruppe.dates, changes.termine)
+          form.termin_daten = datesForTermine(r.gruppe.dates, changes.termine)
         }
         // Preis automatisch nach Karos Preisformel neu berechnen, wenn Kursart/Termine/Kombikurs sich ändern.
         if ('termine' in changes || 'course_type' in changes || 'zusatz_course_types' in changes) {
@@ -81,7 +84,7 @@ export default function ImportPanel({ onImported }) {
   }
 
   async function importRow(row) {
-    const { course_type, name, termine, preis, max_teilnehmerinnen, start_datum, end_datum, zusatz_course_types } = row.form
+    const { course_type, name, termine, preis, max_teilnehmerinnen, start_datum, end_datum, uhrzeit, zusatz_course_types, termin_daten } = row.form
 
     if (!course_type || !name || !termine || preis === '' || !max_teilnehmerinnen) {
       alert('Bitte alle Felder ausfüllen (Kursart, Name, Termine, Preis, max. Teilnehmerinnen) bevor du übernimmst.')
@@ -96,7 +99,9 @@ export default function ImportPanel({ onImported }) {
       max_teilnehmerinnen: Number(max_teilnehmerinnen),
       start_datum: start_datum || null,
       end_datum: end_datum || null,
+      uhrzeit: uhrzeit || null,
       zusatz_course_types: zusatz_course_types || [],
+      termin_daten: termin_daten && termin_daten.length ? termin_daten : null,
       sichtbar_auf_website: false,
       source_gruppen_key: row.key,
     })
@@ -222,6 +227,13 @@ export default function ImportPanel({ onImported }) {
                   />
                 </div>
               </div>
+
+              {row.form.termin_daten && row.form.termin_daten.length > 0 && (
+                <div className={styles.original}>
+                  <strong>Einzeltermine ({row.form.termin_daten.length}):</strong>{' '}
+                  {row.form.termin_daten.map((d) => d.split('-').reverse().join('.')).join(', ')}
+                </div>
+              )}
 
               <button className={styles.importButton} onClick={() => importRow(row)}>
                 Als Kurs übernehmen

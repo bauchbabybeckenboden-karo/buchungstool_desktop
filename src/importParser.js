@@ -32,6 +32,13 @@ export function endDateForTermine(dates, termine) {
   return dates[idx] || ''
 }
 
+// Liefert die tatsächlichen Einzeltermine (inkl. Pausenwochen, wie in der
+// Kursabfrage hinterlegt) für die gewählte Anzahl Termine.
+export function datesForTermine(dates, termine) {
+  if (!Array.isArray(dates) || !termine || termine < 1) return []
+  return dates.slice(0, Number(termine))
+}
+
 export function courseTypeLabel(slug) {
   return COURSE_TYPES.find((c) => c.slug === slug)?.label || slug
 }

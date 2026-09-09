@@ -4,6 +4,12 @@ import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 
+function formatDatumDE(isoDatum) {
+  if (!isoDatum) return ''
+  const [jahr, monat, tag] = isoDatum.split('-')
+  return `${tag}.${monat}.${jahr}`
+}
+
 function ExtraFields({ courseTypeSlug, values, onChange }) {
   if (courseTypeSlug === 'schwangerfit') {
     return (
@@ -170,6 +176,17 @@ export default function Booking() {
       return
     }
     setSubmitted(true)
+
+    // E-Mails verschicken (Bestätigung an Teilnehmerin + Benachrichtigung an Karo).
+    // Ein Fehler hier soll die bereits erfolgreiche Anmeldung nicht mehr beeinflussen.
+    fetch('/.netlify/functions/send-booking-emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        buchung: { ...general, zusatzfelder: extra },
+        kurs: selectedCourse,
+      }),
+    }).catch(() => {})
   }
 
   if (submitted) {
@@ -195,7 +212,7 @@ export default function Booking() {
           <option value="">-- Bitte wählen --</option>
           {courses.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name} (€{c.preis})
+              {c.name}{c.start_datum ? ` – ab ${formatDatumDE(c.start_datum)}` : ''} (€{c.preis})
             </option>
           ))}
         </select>
@@ -211,10 +228,18 @@ export default function Booking() {
           <div className={styles.details}>
             <h3>{selectedCourse.name}</h3>
             <span className={styles.datesBig}>{selectedCourse.termine} Termine à {selectedCourse.dauer_min} mins</span>
-            {selectedCourse.start_datum && selectedCourse.end_datum && (
-              <span className={styles.datesBig}>
-                {new Date(selectedCourse.start_datum).toLocaleDateString('de-DE')} – {new Date(selectedCourse.end_datum).toLocaleDateString('de-DE')}
-              </span>
+            {selectedCourse.termin_daten && selectedCourse.termin_daten.length > 0 ? (
+              <div className={styles.terminListe}>
+                {selectedCourse.termin_daten.map((datum) => (
+                  <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
+                ))}
+              </div>
+            ) : (
+              selectedCourse.start_datum && selectedCourse.end_datum && (
+                <span className={styles.datesBig}>
+                  {new Date(selectedCourse.start_datum).toLocaleDateString('de-DE')} – {new Date(selectedCourse.end_datum).toLocaleDateString('de-DE')}
+                </span>
+              )
             )}
             <span className={styles.price}>€{selectedCourse.preis}</span>
           </div>

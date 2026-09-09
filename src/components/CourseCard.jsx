@@ -99,9 +99,24 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
           <label>Letzter Termin</label>
           <input type="date" value={course.end_datum || ''} onChange={(e) => handleField('end_datum', e.target.value || null)} />
         </div>
+        <div>
+          <label>Uhrzeit (Start)</label>
+          <input type="time" value={course.uhrzeit || ''} onChange={(e) => handleField('uhrzeit', e.target.value || null)} />
+        </div>
       </div>
 
       {saveError && <span style={{ fontSize: '11px', color: '#8b6464' }}>{saveError}</span>}
+
+      {course.termin_daten && course.termin_daten.length > 0 && (
+        <div className={styles.terminDatenBox}>
+          <span className={styles.terminDatenLabel}>Einzeltermine (aus Kursabfrage, inkl. Pausenwochen):</span>
+          <div className={styles.terminDatenList}>
+            {course.termin_daten.map((d) => (
+              <span key={d} className={styles.terminDatenChip}>{d.split('-').reverse().join('.')}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className={styles.participantsRow}>
         <span className={styles.badge}>
