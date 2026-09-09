@@ -402,15 +402,21 @@ export default function Booking() {
   // zusätzlich geloggt und ihre Meldung wird der Nutzerin mit angezeigt,
   // damit ein evtl. wiederkehrendes Problem sich anhand eines Screenshots
   // genauer diagnostizieren lässt.
+  // WICHTIG: kein .select() nach dem Insert - die Buchungsseite läuft mit dem
+  // öffentlichen anon-Key, der (aus Datenschutzgründen) keine Buchungen
+  // AUSLESEN darf. Mit .select() würde Postgres die neue Zeile nach dem
+  // Einfügen zurückgeben wollen, das schlägt an der RLS-Regel fehl und die
+  // ganze Anmeldung wird abgelehnt ("new row violates row-level security
+  // policy for table buchungen") - obwohl der Insert an sich erlaubt ist.
   async function insertBuchungMitRetry(daten) {
-    let { data, error } = await supabase.from('buchungen').insert(daten).select().single()
+    let { error } = await supabase.from('buchungen').insert(daten)
     if (error) {
       console.error('Buchung fehlgeschlagen, versuche erneut:', error)
       await new Promise((resolve) => setTimeout(resolve, 1200))
-      ;({ data, error } = await supabase.from('buchungen').insert(daten).select().single())
+      ;({ error } = await supabase.from('buchungen').insert(daten))
       if (error) console.error('Buchung auch beim zweiten Versuch fehlgeschlagen:', error)
     }
-    return { data, error }
+    return { error }
   }
 
   function fehlermeldung(error) {
@@ -438,32 +444,22 @@ export default function Booking() {
     // Ein Kombi-Paket erzeugt EINE Anmeldung, landet aber technisch als
     // zwei verknüpfte Zeilen in "buchungen" (eine pro zugrundeliegendem
     // Kurs) - dadurch taucht die Teilnehmerin ganz normal in beiden
-    // Kurs-Teilnehmerinnenlisten im Adminbereich auf. Schlägt die zweite
-    // Anmeldung fehl, wird die erste wieder entfernt, damit keine halbe
-    // Kombi-Buchung übrig bleibt.
+    // Kurs-Teilnehmerinnenlisten im Adminbereich auf. Beide Zeilen werden in
+    // EINEM Insert-Aufruf geschrieben, damit Postgres sie als eine
+    // Transaktion behandelt: schlägt eine der beiden Zeilen fehl (z.B. weil
+    // der Kurs inzwischen gelöscht wurde), wird auch die andere gar nicht
+    // erst gespeichert - es kann also keine "halbe" Kombi-Buchung entstehen
+    // (vorher: zwei einzelne Inserts + manuelles Aufräumen per Delete, was
+    // am anon-Key ohnehin an der RLS-Regel gescheitert wäre).
     if (selectedPaket) {
-      const { data: erste, error: fehler1 } = await insertBuchungMitRetry({
-        ...basisDaten,
-        kurs_id: selectedPaket.kurs1.id,
-        paket_id: selectedPaket.id,
-      })
+      const { error } = await insertBuchungMitRetry([
+        { ...basisDaten, kurs_id: selectedPaket.kurs1.id, paket_id: selectedPaket.id },
+        { ...basisDaten, kurs_id: selectedPaket.kurs2.id, paket_id: selectedPaket.id },
+      ])
 
-      if (fehler1) {
+      if (error) {
         setSubmitting(false)
-        setSubmitError(fehlermeldung(fehler1))
-        return
-      }
-
-      const { error: fehler2 } = await insertBuchungMitRetry({
-        ...basisDaten,
-        kurs_id: selectedPaket.kurs2.id,
-        paket_id: selectedPaket.id,
-      })
-
-      if (fehler2) {
-        await supabase.from('buchungen').delete().eq('id', erste.id)
-        setSubmitting(false)
-        setSubmitError(fehlermeldung(fehler2))
+        setSubmitError(fehlermeldung(error))
         return
       }
 

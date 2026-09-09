@@ -276,6 +276,25 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
         <label htmlFor={`online-${course.id}`}>Online-Kurs (zeigt "ONLINE" auf der Kachel)</label>
       </div>
 
+      {!course.ist_online && (
+        <div className={styles.comboBox}>
+          <span className={styles.comboLabel}>
+            Online-Partnerkurs — wird automatisch auf "Auf Website zeigen" umgeschaltet, sobald dieser Kurs ausgebucht ist:
+          </span>
+          <select
+            value={course.online_partner_id || ''}
+            onChange={(e) => handleField('online_partner_id', e.target.value || null)}
+          >
+            <option value="">— keiner —</option>
+            {siblingCourses
+              .filter((c) => c.ist_online && c.id !== course.id)
+              .map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+          </select>
+        </div>
+      )}
+
       <div className={styles.checkboxRow}>
         <input
           type="checkbox"
