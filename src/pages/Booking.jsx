@@ -126,6 +126,25 @@ export default function Booking() {
   const [submitError, setSubmitError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
 
+  // Meldet die tatsächliche Seitenhöhe an ein einbettendes iFrame auf der
+  // Homepage, damit dieses sich automatisch anpasst (die Buchungsseite
+  // wird länger, sobald ein Kurs ausgewählt ist oder ein Fehler
+  // erscheint - ein fest eingestelltes iFrame würde sonst abschneiden
+  // oder unnötig scrollen).
+  useEffect(() => {
+    if (window.parent === window) return // nicht eingebettet, kein iFrame vorhanden
+    function sendeHoehe() {
+      window.parent.postMessage(
+        { type: 'bbb-booking-resize', height: document.documentElement.scrollHeight },
+        '*'
+      )
+    }
+    sendeHoehe()
+    const observer = new ResizeObserver(sendeHoehe)
+    observer.observe(document.documentElement)
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     if (!courseType) return
     let active = true
