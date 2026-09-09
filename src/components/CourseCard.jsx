@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import styles from './CourseCard.module.css'
-import { getCourseTypeBySlug } from '../courseTypes.js'
+import { getCourseTypeBySlug, COURSE_TYPES } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 
 export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSave, onReload }) {
@@ -30,6 +30,12 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     onUpdateLocal(course.id, { [field]: value })
     const error = await onSave(course.id, { [field]: value })
     setSaveError(error ? 'Speichern erfordert Admin-Login (noch einzurichten).' : null)
+  }
+
+  function toggleZusatzType(slug) {
+    const current = course.zusatz_course_types || []
+    const next = current.includes(slug) ? current.filter((s) => s !== slug) : [...current, slug]
+    handleField('zusatz_course_types', next)
   }
 
   async function removeParticipant(id) {
@@ -73,6 +79,14 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
         <div>
           <label>Max. Teilnehmerinnen</label>
           <input type="number" value={course.max_teilnehmerinnen} onChange={(e) => handleField('max_teilnehmerinnen', Number(e.target.value))} />
+        </div>
+        <div>
+          <label>Erster Termin</label>
+          <input type="date" value={course.start_datum || ''} onChange={(e) => handleField('start_datum', e.target.value || null)} />
+        </div>
+        <div>
+          <label>Letzter Termin</label>
+          <input type="date" value={course.end_datum || ''} onChange={(e) => handleField('end_datum', e.target.value || null)} />
         </div>
       </div>
 
@@ -120,6 +134,22 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
 
       <div className={styles.urlHint}>
         Wird angezeigt auf: bauch-baby-beckenboden.de{courseType?.websitePath}
+      </div>
+
+      <div className={styles.comboBox}>
+        <span className={styles.comboLabel}>Kombikurs — zusätzlich anzeigen auf:</span>
+        <div className={styles.comboOptions}>
+          {COURSE_TYPES.filter((t) => t.slug !== course.course_type).map((t) => (
+            <label key={t.slug} className={styles.comboOption}>
+              <input
+                type="checkbox"
+                checked={(course.zusatz_course_types || []).includes(t.slug)}
+                onChange={() => toggleZusatzType(t.slug)}
+              />
+              {t.label}
+            </label>
+          ))}
+        </div>
       </div>
 
       <div className={styles.checkboxRow}>

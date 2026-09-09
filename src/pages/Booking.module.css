@@ -4,6 +4,19 @@
   padding: 20px;
 }
 
+.logoHeader {
+  background: linear-gradient(135deg, var(--color-main) 0%, var(--color-main-dark) 100%);
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+  margin-bottom: 30px;
+}
+
+.logo {
+  height: 90px;
+  width: auto;
+}
+
 .selector {
   background: white;
   border-left: 4px solid var(--color-main);

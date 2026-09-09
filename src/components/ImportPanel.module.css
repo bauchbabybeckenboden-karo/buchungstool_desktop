@@ -82,6 +82,28 @@
   font-family: inherit;
 }
 
+.comboOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.comboOption {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.comboOption input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--color-main);
+}
+
 .importButton {
   background-color: var(--color-main);
   color: white;

@@ -63,6 +63,7 @@ export default function Admin() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
+        <img src="/logo.png" alt="Bauch · Baby · Beckenboden" className={styles.logo} />
         <h1>Bauch · Baby · Beckenboden</h1>
         <p>Kursverwaltung</p>
         <button className={styles.logoutButton} onClick={() => supabase.auth.signOut()}>

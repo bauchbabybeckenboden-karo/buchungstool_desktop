@@ -127,7 +127,7 @@ export default function Booking() {
     supabase
       .from('kurse')
       .select('*')
-      .eq('course_type', courseTypeSlug)
+      .or(`course_type.eq.${courseTypeSlug},zusatz_course_types.cs.{${courseTypeSlug}}`)
       .eq('sichtbar_auf_website', true)
       .order('created_at', { ascending: true })
       .then(({ data, error }) => {
@@ -185,6 +185,10 @@ export default function Booking() {
 
   return (
     <div className={styles.container}>
+      <div className={styles.logoHeader}>
+        <img src="/logo.png" alt="Bauch · Baby · Beckenboden" className={styles.logo} />
+      </div>
+
       <div className={styles.selector}>
         <label htmlFor="course-select">Wähle deinen Kurstermin:</label>
         <select id="course-select" value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
@@ -207,6 +211,11 @@ export default function Booking() {
           <div className={styles.details}>
             <h3>{selectedCourse.name}</h3>
             <span className={styles.datesBig}>{selectedCourse.termine} Termine à {selectedCourse.dauer_min} mins</span>
+            {selectedCourse.start_datum && selectedCourse.end_datum && (
+              <span className={styles.datesBig}>
+                {new Date(selectedCourse.start_datum).toLocaleDateString('de-DE')} – {new Date(selectedCourse.end_datum).toLocaleDateString('de-DE')}
+              </span>
+            )}
             <span className={styles.price}>€{selectedCourse.preis}</span>
           </div>
 

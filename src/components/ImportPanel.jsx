@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import styles from './ImportPanel.module.css'
 import { supabase } from '../supabase.js'
 import { COURSE_TYPES } from '../courseTypes.js'
-import { parseUmfrageTitel } from '../importParser.js'
+import { parseUmfrageTitel, parseTerminDates } from '../importParser.js'
 
 export default function ImportPanel({ onImported }) {
   const [open, setOpen] = useState(false)
@@ -34,6 +34,7 @@ export default function ImportPanel({ onImported }) {
       .filter((u) => !alreadyImported.has(u.id))
       .map((u) => {
         const guess = parseUmfrageTitel(u.titel)
+        const dates = parseTerminDates(u.ort, u.termine)
         return {
           umfrage: u,
           form: {
@@ -42,6 +43,9 @@ export default function ImportPanel({ onImported }) {
             termine: guess.termineGuess || '',
             preis: guess.preisGuess || '',
             max_teilnehmerinnen: '',
+            start_datum: dates.startDatumGuess,
+            end_datum: dates.endDatumGuess,
+            zusatz_course_types: [],
             isCombo: guess.isCombo,
           },
         }
@@ -58,7 +62,7 @@ export default function ImportPanel({ onImported }) {
   }
 
   async function importRow(row) {
-    const { course_type, name, termine, preis, max_teilnehmerinnen } = row.form
+    const { course_type, name, termine, preis, max_teilnehmerinnen, start_datum, end_datum, zusatz_course_types } = row.form
 
     if (!course_type || !name || !termine || preis === '' || !max_teilnehmerinnen) {
       alert('Bitte alle Felder ausfüllen (Kursart, Name, Termine, Preis, max. Teilnehmerinnen) bevor du übernimmst.')
@@ -71,6 +75,9 @@ export default function ImportPanel({ onImported }) {
       termine: Number(termine),
       preis: Number(preis),
       max_teilnehmerinnen: Number(max_teilnehmerinnen),
+      start_datum: start_datum || null,
+      end_datum: end_datum || null,
+      zusatz_course_types: zusatz_course_types || [],
       sichtbar_auf_website: false,
       source_umfrage_id: row.umfrage.id,
     })
@@ -114,8 +121,26 @@ export default function ImportPanel({ onImported }) {
 
               {row.form.isCombo && (
                 <div className={styles.warning}>
-                  Kombikurs erkannt — enthält vermutlich mehrere Kursarten. Bitte manuell prüfen, wie das
-                  am besten abgebildet wird (z.B. zwei einzelne Kurse anlegen).
+                  Kombikurs erkannt — enthält vermutlich mehrere Kursarten. Wähle unten die Haupt-Kursart und
+                  hake zusätzlich an, auf welchen weiteren Seiten der Kurs ebenfalls erscheinen soll.
+                  <div className={styles.comboOptions}>
+                    {COURSE_TYPES.filter((t) => t.slug !== row.form.course_type).map((t) => (
+                      <label key={t.slug} className={styles.comboOption}>
+                        <input
+                          type="checkbox"
+                          checked={(row.form.zusatz_course_types || []).includes(t.slug)}
+                          onChange={() => {
+                            const current = row.form.zusatz_course_types || []
+                            const next = current.includes(t.slug)
+                              ? current.filter((s) => s !== t.slug)
+                              : [...current, t.slug]
+                            updateForm(row.umfrage.id, { zusatz_course_types: next })
+                          }}
+                        />
+                        {t.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -164,7 +189,29 @@ export default function ImportPanel({ onImported }) {
                     onChange={(e) => updateForm(row.umfrage.id, { max_teilnehmerinnen: e.target.value })}
                   />
                 </div>
+                <div>
+                  <label>Erster Termin</label>
+                  <input
+                    type="date"
+                    value={row.form.start_datum}
+                    onChange={(e) => updateForm(row.umfrage.id, { start_datum: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label>Letzter Termin</label>
+                  <input
+                    type="date"
+                    value={row.form.end_datum}
+                    onChange={(e) => updateForm(row.umfrage.id, { end_datum: e.target.value })}
+                  />
+                </div>
               </div>
+
+              {(!row.form.start_datum || !row.form.end_datum) && (
+                <div className={styles.warning}>
+                  Termine konnten nicht sicher aus dem Feld "Ort" erkannt werden — bitte oben von Hand eintragen.
+                </div>
+              )}
 
               <button className={styles.importButton} onClick={() => importRow(row)}>
                 Als Kurs übernehmen
