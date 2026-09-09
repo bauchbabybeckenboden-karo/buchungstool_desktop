@@ -50,7 +50,7 @@ export default function Admin() {
       .single()
 
     if (error) {
-      alert('Kurs konnte nicht angelegt werden (Login als Admin erforderlich – siehe README).')
+      alert('Kurs konnte nicht angelegt werden: ' + error.message)
       return
     }
     setCourses((prev) => [...prev, data])
@@ -64,11 +64,14 @@ export default function Admin() {
       <div className={styles.header}>
         <h1>Bauch · Baby · Beckenboden</h1>
         <p>Kursverwaltung</p>
+        <button className={styles.logoutButton} onClick={() => supabase.auth.signOut()}>
+          Ausloggen
+        </button>
       </div>
 
       <p className={styles.hint}>
         Kursdaten bearbeiten, Teilnehmerinnen verwalten und festlegen, ob der Kurs auf der jeweiligen Website-Seite
-        angezeigt wird. Speichern erfordert einen Admin-Login (siehe README – noch einzurichten).
+        angezeigt wird.
       </p>
 
       {loading && <p className={styles.hint}>Lade Kurse …</p>}

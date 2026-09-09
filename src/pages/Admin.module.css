@@ -5,11 +5,28 @@
 }
 
 .header {
+  position: relative;
   background: linear-gradient(135deg, var(--color-main) 0%, var(--color-main-dark) 100%);
   color: white;
   padding: 50px 30px;
   text-align: center;
   margin-bottom: 40px;
+}
+
+.logoutButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.logoutButton:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .header h1 {
