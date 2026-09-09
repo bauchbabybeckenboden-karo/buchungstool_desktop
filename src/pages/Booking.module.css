@@ -40,6 +40,102 @@
   font-size: 14px;
 }
 
+.termineSection {
+  background: linear-gradient(135deg, var(--color-main) 0%, var(--color-main-dark) 100%);
+  padding: 20px;
+  margin-bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.termineBox {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: rgba(245, 237, 232, 0.15);
+  border: 0.5px solid rgba(245, 237, 232, 0.3);
+  border-radius: 10px;
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.termineBox:hover {
+  background: rgba(245, 237, 232, 0.25);
+}
+
+.termineBoxHighlight {
+  background: rgba(245, 237, 232, 0.22);
+  border: 1.5px solid rgba(245, 237, 232, 0.55);
+}
+
+.termineBoxHighlight:hover {
+  background: rgba(245, 237, 232, 0.32);
+}
+
+.termineBoxSelected {
+  border: 1.5px solid #f5ede8;
+  background: rgba(245, 237, 232, 0.32);
+}
+
+.termineBoxDisabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.termineBoxDisabled:hover {
+  background: rgba(245, 237, 232, 0.15);
+}
+
+.termineIcon {
+  font-size: 26px;
+  margin-top: 2px;
+  color: #f5ede8;
+  flex-shrink: 0;
+}
+
+.termineTextGroup p {
+  margin: 0;
+}
+
+.termineLabel {
+  font-size: 13px;
+  color: rgba(245, 237, 232, 0.7);
+  margin-bottom: 5px !important;
+}
+
+.termineText {
+  font-size: 16px;
+  color: #f5ede8;
+  line-height: 1.5;
+}
+
+.termineTextBold {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.termineDatesLine {
+  font-size: 16px;
+  color: #f5ede8;
+  line-height: 1.5;
+}
+
+.termineArrow {
+  margin-left: auto;
+  color: rgba(245, 237, 232, 0.5);
+  font-size: 20px;
+  align-self: center;
+  padding-left: 10px;
+}
+
+.emptyLight {
+  text-align: center;
+  padding: 20px;
+  color: #f5ede8;
+}
+
 .details {
   background: white;
   border-left: 4px solid var(--color-main);
