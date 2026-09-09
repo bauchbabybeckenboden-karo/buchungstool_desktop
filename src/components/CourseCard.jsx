@@ -44,8 +44,27 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     if (neuerPreis !== null) handleField('preis', neuerPreis)
   }
 
-  async function removeParticipant(id) {
-    const { error } = await supabase.from('buchungen').delete().eq('id', id)
+  async function removeParticipant(participant) {
+    // Kombi-Paket-Anmeldungen bestehen aus ZWEI verknüpften Zeilen (eine pro
+    // gebündeltem Kurs, gleiche paket_id). Wird eine davon entfernt, muss
+    // auch die zugehörige zweite Zeile im anderen Kurs mit entfernt werden -
+    // sonst bliebe die Teilnehmerin dort halb angemeldet stehen.
+    if (participant.paket_id) {
+      const bestaetigt = window.confirm(
+        'Das ist eine Kombi-Paket-Anmeldung. Beim Entfernen wird die Teilnehmerin aus BEIDEN gebündelten Kursen entfernt. Fortfahren?'
+      )
+      if (!bestaetigt) return
+
+      const { error } = await supabase.from('buchungen').delete().eq('paket_id', participant.paket_id).eq('email', participant.email)
+      if (error) {
+        alert('Entfernen erfordert Admin-Login (noch einzurichten).')
+        return
+      }
+      loadParticipants()
+      return
+    }
+
+    const { error } = await supabase.from('buchungen').delete().eq('id', participant.id)
     if (error) {
       alert('Entfernen erfordert Admin-Login (noch einzurichten).')
       return
@@ -185,7 +204,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
           {!participantsLoading && !participantsError && participants.length === 0 && <span>Noch keine Anmeldungen.</span>}
           {!participantsError && participants.map((p) => (
             <div className={styles.participantEntry} key={p.id}>
-              <span>{p.vorname} {p.nachname}</span>
+              <span>{p.vorname} {p.nachname}{p.paket_id ? ' (Kombi-Paket)' : ''}</span>
               <div className={styles.participantActions}>
                 <select
                   defaultValue=""
@@ -200,7 +219,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
                       <option key={c.id} value={c.id}>→ {c.name}</option>
                     ))}
                 </select>
-                <button className={styles.removeBtn} onClick={() => removeParticipant(p.id)}>
+                <button className={styles.removeBtn} onClick={() => removeParticipant(p)}>
                   Entfernen
                 </button>
               </div>

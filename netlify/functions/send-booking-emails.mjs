@@ -84,8 +84,172 @@ export default async (req) => {
   if (!RESEND_API_KEY) return new Response("RESEND_API_KEY fehlt", { status: 500 });
 
   try {
-    const { buchung, kurs } = await req.json();
+    const { buchung, kurs, paket } = await req.json();
     const zusatz = buchung.zusatzfelder || {};
+
+    // --- Kombi-Paket: eine gemeinsame Bestätigungsmail für beide gebündelten Kurse ---
+    if (paket) {
+      const { name, preis, kurse } = paket;
+      const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
+      const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${name}`;
+
+      const kursBlockHtml = (k) => {
+        const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
+        const uhrzeitEndeK = addMinutes(k.uhrzeit, k.dauer_min);
+        const terminZeilenK =
+          Array.isArray(k.termin_daten) && k.termin_daten.length > 0
+            ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
+            : [formatDatumKurz(k.start_datum), k.end_datum ? `bis ${formatDatumKurz(k.end_datum)}` : ""]
+                .filter(Boolean)
+                .join(" ");
+        return `
+          <p style="margin:0 0 4px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">${escapeHtml(label)}</p>
+          <p style="margin:0 0 18px;font-size:14px;">
+            ${terminZeilenK}<br/>
+            ${k.uhrzeit ? `${k.uhrzeit}${uhrzeitEndeK ? " - " + uhrzeitEndeK : ""} Uhr<br/>` : ""}
+          </p>`;
+      };
+
+      const teilnehmerinHtml = `
+        <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5ede8;padding:32px 12px;">
+          <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #ece1da;">
+            <div style="background:linear-gradient(135deg,#8b6464,#7d5858);padding:32px 36px;color:#f7f2ee;">
+              <p style="margin:0 0 6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#e3cfcf;">Deine Anmeldung im Überblick</p>
+              <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
+            </div>
+            <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
+              <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zum Kombi-Paket <strong style="font-weight:600;">${escapeHtml(name)}</strong>!</p>
+
+              <hr style="border:none;border-top:1px solid #ece1da;margin:24px 0;"/>
+
+              <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Wie es weitergeht</p>
+              <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${preis} €</strong> auf folgendes Konto:</p>
+              <table style="width:100%;font-size:13px;margin:0 0 18px;border-collapse:collapse;">
+                <tr><td style="padding:2px 0;color:#8a7060;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
+                <tr><td style="padding:2px 0;color:#8a7060;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
+                <tr><td style="padding:2px 0;color:#8a7060;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
+                <tr><td style="padding:2px 0;color:#8a7060;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
+              </table>
+              <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus (einmal reicht für beide Kurse).</p>
+
+              <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst du wöchentlich daran erinnert, dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
+
+              <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Deine Kurstermine</p>
+              ${kurse.map(kursBlockHtml).join("")}
+              <p style="margin:0 0 18px;font-size:14px;">
+                Paketpreis gesamt: ${preis} €<br/>
+                <span style="font-size:12px;color:#8a7060;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
+              </p>
+
+              <p style="margin:0 0 24px;">💕 Solltest du Fragen haben, melde dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für dein Vertrauen 💕</p>
+
+              <p style="margin:0;">Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
+            </div>
+            <div style="background:#f5ede8;padding:20px 36px;font-size:12px;color:#8a7060;text-align:center;line-height:1.6;">
+              Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8a7060;">bauch-baby-beckenboden.de</a>
+            </div>
+          </div>
+        </div>`;
+
+      await sendResend({
+        from: FROM,
+        to: buchung.email,
+        subject: `Deine Anmeldung: ${name}`,
+        html: teilnehmerinHtml,
+      });
+
+      const zeile = (label, value) =>
+        value
+          ? `<tr><td style="padding:4px 0;color:#8b93a1;font-size:12px;">${label}</td></tr><tr><td style="padding:0 0 12px 0;color:#111;font-size:14px;">${value}</td></tr>`
+          : "";
+
+      let notfallHtml = "";
+      kurse.forEach((k) => {
+        if (k.course_type === "schwangerfit" && (zusatz.notfallName || zusatz.notfallTel)) {
+          notfallHtml =
+            zeile("Notfallkontakt", escapeHtml(zusatz.notfallName || "")) +
+            zeile("Notfallkontakt Telefon", `<a href="tel:${escapeHtml(zusatz.notfallTel || "")}">${escapeHtml(zusatz.notfallTel || "")}</a>`);
+        }
+      });
+
+      const wannTextPaket = kurse
+        .map((k) => {
+          const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
+          const terminZeilenK =
+            Array.isArray(k.termin_daten) && k.termin_daten.length > 0
+              ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
+              : formatDatumKurz(k.start_datum);
+          return `<strong>${escapeHtml(label)}</strong><br/>${terminZeilenK}`;
+        })
+        .join("<br/><br/>");
+
+      const adminHtml = `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:white;border:1px solid #eee;">
+          <div style="padding:20px 20px 0 20px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0d9d9;"></span>
+              <strong style="font-size:15px;">Bauch Baby Beckenboden</strong>
+            </div>
+            <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer (Kombi-Paket)</h2>
+          </div>
+          <table style="width:100%;padding:0 20px;border-collapse:collapse;">
+            ${zeile("Paket", escapeHtml(name))}
+            ${zeile("Wann", wannTextPaket)}
+            ${zeile("Preis", `${preis} €`)}
+            ${zeile("Mit", "Karoline Hartwig")}
+          </table>
+          <hr style="border:none;border-top:1px solid #eee;margin:8px 20px;"/>
+          <table style="width:100%;padding:0 20px 20px 20px;border-collapse:collapse;">
+            ${zeile("Kunde", escapeHtml(buchung.vorname + " " + buchung.nachname))}
+            ${zeile("E-Mail", `<a href="mailto:${escapeHtml(buchung.email)}">${escapeHtml(buchung.email)}</a>`)}
+            ${zeile("Telefon", `<a href="tel:${escapeHtml(buchung.telefon)}">${escapeHtml(buchung.telefon)}</a>`)}
+            ${zeile("Adresse", escapeHtml(adresse))}
+            ${notfallHtml}
+          </table>
+        </div>`;
+
+      const attachments = [
+        {
+          filename: `${buchung.vorname}-${buchung.nachname}.vcf`,
+          content: base64(
+            vCard({
+              vorname: buchung.vorname,
+              nachname: buchung.nachname,
+              telefon: buchung.telefon,
+              email: buchung.email,
+              strasse: buchung.strasse,
+              plz: buchung.plz,
+              ort: buchung.ort,
+            })
+          ),
+        },
+      ];
+
+      const notfallKurs = kurse.find((k) => k.course_type === "schwangerfit");
+      if (notfallKurs && zusatz.notfallTel) {
+        attachments.push({
+          filename: `Notfallkontakt-${buchung.vorname}-${buchung.nachname}.vcf`,
+          content: base64(
+            vCard({
+              vorname: "Teilnehmerin – Notfallkontakt",
+              nachname: `(${zusatz.notfallName || buchung.vorname + " " + buchung.nachname})`,
+              telefon: zusatz.notfallTel,
+            })
+          ),
+        });
+      }
+
+      await sendResend({
+        from: FROM,
+        to: ADMIN_EMAIL,
+        subject: `${buchung.vorname} ${buchung.nachname} Kombi-Paket ${name}`,
+        html: adminHtml,
+        attachments,
+      });
+
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+
     const courseTypeLabel = COURSE_TYPE_LABELS[kurs.course_type] || kurs.course_type;
     const kursBezeichnung = `${courseTypeLabel} ${kurs.termine} Termine`;
     const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;

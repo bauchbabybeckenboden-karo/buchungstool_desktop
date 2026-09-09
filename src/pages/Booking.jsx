@@ -54,6 +54,11 @@ function terminDatenOderRange(course) {
 function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect }) {
   const datum = course.termin_daten?.[0] || course.start_datum
   const zeitpunkt = `${formatDatumDE(datum)} · ${course.uhrzeit || ''}`.trim()
+  // Der Kursname wird mit in die kleine Beschriftungszeile aufgenommen, damit
+  // z.B. Online-Termine (Karo benennt diese selbst entsprechend, etwa
+  // "Mamafit Online") für Teilnehmerinnen auch auf der Kachel erkennbar sind -
+  // ohne ein zusätzliches, separates "ONLINE"-Badge auf der Liste.
+  const beschriftung = label ? `${label} · ${course.name}` : course.name
 
   let titelText
   let istWarnung = false
@@ -86,10 +91,58 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
     >
       <i className={`ti ti-calendar ${styles.termineIcon}`} />
       <div className={styles.termineTextGroup}>
-        <p className={styles.termineLabel}>{label}</p>
+        <p className={styles.termineLabel}>{beschriftung}</p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         <p className={styles.termineText}>{course.termine} Termine · {course.preis}€</p>
         {terminliste && <p className={styles.termineDatesLine}>📍 {terminliste}</p>}
+      </div>
+      {!ausgebucht && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
+    </div>
+  )
+}
+
+// Kachel für ein Kombi-Paket (zwei eigenständige Kurse zu einer Buchung
+// gebündelt) - im selben Kachel-Stil wie TerminBox, listet aber beide
+// zugrundeliegenden Kurstermine untereinander auf.
+function PaketBox({ paket, spotsLeft, selected, onSelect }) {
+  const ausgebucht = spotsLeft !== null && spotsLeft <= 0
+  const wenigePlaetze = !ausgebucht && spotsLeft !== null && spotsLeft <= 3
+
+  let titelText = paket.name
+  if (ausgebucht) titelText = `Ausgebucht — ${paket.name}`
+  else if (wenigePlaetze) titelText = `Wenige Plätze verfügbar — ${paket.name}`
+
+  const klassen = [styles.termineBox]
+  if (wenigePlaetze) klassen.push(styles.termineBoxHighlight)
+  if (selected) klassen.push(styles.termineBoxSelected)
+  if (ausgebucht) klassen.push(styles.termineBoxDisabled)
+
+  function kursZeile(kurs) {
+    const datum = kurs.termin_daten?.[0] || kurs.start_datum
+    const terminliste = formatTerminlisteKurz(terminDatenOderRange(kurs))
+    const typLabel = getCourseTypeBySlug(kurs.course_type)?.label || kurs.course_type
+    return (
+      <p className={styles.termineText} key={kurs.id}>
+        {typLabel} ab {formatDatumDE(datum)}{kurs.uhrzeit ? ` · ${kurs.uhrzeit}` : ''}
+        {terminliste ? <><br />📍 {terminliste}</> : null}
+      </p>
+    )
+  }
+
+  return (
+    <div
+      className={klassen.join(' ')}
+      onClick={() => { if (!ausgebucht) onSelect(paket.id) }}
+      role="button"
+      tabIndex={ausgebucht ? -1 : 0}
+    >
+      <i className={`ti ti-box ${styles.termineIcon}`} />
+      <div className={styles.termineTextGroup}>
+        <p className={styles.termineLabel}>Kombi-Paket</p>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
+        {kursZeile(paket.kurs1)}
+        {kursZeile(paket.kurs2)}
+        <p className={styles.termineText}>Paketpreis: {paket.preis}€</p>
       </div>
       {!ausgebucht && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
     </div>
@@ -205,8 +258,10 @@ export default function Booking() {
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const [pakete, setPakete] = useState([])
   const [bookingCounts, setBookingCounts] = useState({})
   const [selectedId, setSelectedId] = useState('')
+  const [selectedPaketId, setSelectedPaketId] = useState('')
   const [general, setGeneral] = useState(initialGeneral)
   const [extra, setExtra] = useState({})
   const [submitting, setSubmitting] = useState(false)
@@ -251,10 +306,49 @@ export default function Booking() {
     return () => { active = false }
   }, [courseTypeSlug, courseType])
 
-  // Belegungszahlen pro Kurs laden, um "Wenige Plätze verfügbar" / "Ausgebucht"
-  // auf den Termin-Kacheln anzuzeigen.
+  // Kombi-Pakete laden, die diese Kursseite betreffen (einer der beiden
+  // gebündelten Kurse gehört zu diesem Kurstyp). Da kurs_id_1/kurs_id_2 auf
+  // beliebige, unabhängige Kurse verweisen können (auch auf einen anderen
+  // Kurstyp als diese Seite), werden die referenzierten Kurse separat
+  // nachgeladen statt sich auf die oben geladene `courses`-Liste zu verlassen.
   useEffect(() => {
-    if (courses.length === 0) {
+    if (!courseTypeSlug) return
+    let active = true
+    supabase
+      .from('kurs_pakete')
+      .select('*')
+      .eq('sichtbar_auf_website', true)
+      .then(async ({ data: paketeData, error }) => {
+        if (!active) return
+        if (error || !paketeData || paketeData.length === 0) {
+          setPakete([])
+          return
+        }
+        const kursIds = [...new Set(paketeData.flatMap((p) => [p.kurs_id_1, p.kurs_id_2]))]
+        const { data: kurseData } = await supabase.from('kurse').select('*').in('id', kursIds)
+        if (!active) return
+        const kursMap = {}
+        ;(kurseData || []).forEach((k) => { kursMap[k.id] = k })
+        const angereichert = paketeData
+          .map((p) => ({ ...p, kurs1: kursMap[p.kurs_id_1], kurs2: kursMap[p.kurs_id_2] }))
+          .filter(
+            (p) =>
+              p.kurs1 &&
+              p.kurs2 &&
+              (p.kurs1.course_type === courseTypeSlug || p.kurs2.course_type === courseTypeSlug)
+          )
+        setPakete(angereichert)
+      })
+    return () => { active = false }
+  }, [courseTypeSlug])
+
+  // Belegungszahlen laden, um "Wenige Plätze verfügbar" / "Ausgebucht" auf
+  // den Termin- und Paket-Kacheln anzuzeigen. Bei Kombi-Paketen zählt der
+  // jeweils knappere der beiden zugrundeliegenden Kurse.
+  useEffect(() => {
+    const relevanteIds = new Set(courses.map((c) => c.id))
+    pakete.forEach((p) => { relevanteIds.add(p.kurs1.id); relevanteIds.add(p.kurs2.id) })
+    if (relevanteIds.size === 0) {
       setBookingCounts({})
       return
     }
@@ -262,7 +356,7 @@ export default function Booking() {
     supabase
       .from('buchungen')
       .select('kurs_id')
-      .in('kurs_id', courses.map((c) => c.id))
+      .in('kurs_id', [...relevanteIds])
       .then(({ data }) => {
         if (!active) return
         const counts = {}
@@ -270,9 +364,10 @@ export default function Booking() {
         setBookingCounts(counts)
       })
     return () => { active = false }
-  }, [courses])
+  }, [courses, pakete])
 
   const selectedCourse = courses.find((c) => c.id === selectedId)
+  const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
 
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
@@ -285,6 +380,18 @@ export default function Booking() {
     return course.max_teilnehmerinnen - (bookingCounts[course.id] || 0)
   }
 
+  // Ein Kombi-Paket ist so lange buchbar, wie in BEIDEN zugrundeliegenden
+  // Kursen noch ein Platz frei ist - eine Anmeldung belegt ja in jedem der
+  // beiden Kurse einen Platz.
+  function spotsLeftFuerPaket(paket) {
+    const links = spotsLeftFuer(paket.kurs1)
+    const rechts = spotsLeftFuer(paket.kurs2)
+    if (links === null && rechts === null) return null
+    if (links === null) return rechts
+    if (rechts === null) return links
+    return Math.min(links, rechts)
+  }
+
   if (!courseType) {
     return <div className={styles.container}>Unbekannter Kurstyp.</div>
   }
@@ -294,8 +401,7 @@ export default function Booking() {
     setSubmitting(true)
     setSubmitError(null)
 
-    const { error } = await supabase.from('buchungen').insert({
-      kurs_id: selectedCourse.id,
+    const basisDaten = {
       vorname: general.vorname,
       nachname: general.nachname,
       email: general.email,
@@ -306,7 +412,53 @@ export default function Booking() {
       dsgvo_akzeptiert: general.dsgvo,
       antirassismus_akzeptiert: general.antirassismus,
       zusatzfelder: extra,
-    })
+    }
+
+    // Ein Kombi-Paket erzeugt EINE Anmeldung, landet aber technisch als
+    // zwei verknüpfte Zeilen in "buchungen" (eine pro zugrundeliegendem
+    // Kurs) - dadurch taucht die Teilnehmerin ganz normal in beiden
+    // Kurs-Teilnehmerinnenlisten im Adminbereich auf. Schlägt die zweite
+    // Anmeldung fehl, wird die erste wieder entfernt, damit keine halbe
+    // Kombi-Buchung übrig bleibt.
+    if (selectedPaket) {
+      const { data: erste, error: fehler1 } = await supabase
+        .from('buchungen')
+        .insert({ ...basisDaten, kurs_id: selectedPaket.kurs1.id, paket_id: selectedPaket.id })
+        .select()
+        .single()
+
+      if (fehler1) {
+        setSubmitting(false)
+        setSubmitError('Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut.')
+        return
+      }
+
+      const { error: fehler2 } = await supabase
+        .from('buchungen')
+        .insert({ ...basisDaten, kurs_id: selectedPaket.kurs2.id, paket_id: selectedPaket.id })
+
+      if (fehler2) {
+        await supabase.from('buchungen').delete().eq('id', erste.id)
+        setSubmitting(false)
+        setSubmitError('Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut.')
+        return
+      }
+
+      setSubmitting(false)
+      setSubmitted(true)
+
+      fetch('/.netlify/functions/send-booking-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          buchung: { ...general, zusatzfelder: extra },
+          paket: { name: selectedPaket.name, preis: selectedPaket.preis, kurse: [selectedPaket.kurs1, selectedPaket.kurs2] },
+        }),
+      }).catch(() => {})
+      return
+    }
+
+    const { error } = await supabase.from('buchungen').insert({ ...basisDaten, kurs_id: selectedCourse.id })
 
     setSubmitting(false)
     if (error) {
@@ -357,7 +509,7 @@ export default function Booking() {
             label={wochentagVonKurs(c)}
             spotsLeft={spotsLeftFuer(c)}
             selected={selectedId === c.id}
-            onSelect={setSelectedId}
+            onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
           />
         ))}
         {komboKurse.map((c) => (
@@ -368,30 +520,61 @@ export default function Booking() {
             comboLabel={getCourseTypeBySlug(c.course_type)?.label || c.course_type}
             spotsLeft={spotsLeftFuer(c)}
             selected={selectedId === c.id}
-            onSelect={setSelectedId}
+            onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
+          />
+        ))}
+        {pakete.map((p) => (
+          <PaketBox
+            key={p.id}
+            paket={p}
+            spotsLeft={spotsLeftFuerPaket(p)}
+            selected={selectedPaketId === p.id}
+            onSelect={(id) => { setSelectedPaketId(id); setSelectedId('') }}
           />
         ))}
       </div>
 
-      {selectedCourse && (
+      {(selectedCourse || selectedPaket) && (
         <>
           <div className={styles.details}>
-            <h3>{selectedCourse.name}</h3>
-            <span className={styles.datesBig}>{selectedCourse.termine} Termine à {selectedCourse.dauer_min} mins</span>
-            {selectedCourse.termin_daten && selectedCourse.termin_daten.length > 0 ? (
-              <div className={styles.terminListe}>
-                {selectedCourse.termin_daten.map((datum) => (
-                  <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
+            <h3>{selectedPaket ? selectedPaket.name : selectedCourse.name}</h3>
+            {selectedPaket ? (
+              <>
+                {[selectedPaket.kurs1, selectedPaket.kurs2].map((k) => (
+                  <div key={k.id} style={{ marginBottom: '10px' }}>
+                    <span className={styles.datesBig}>
+                      {getCourseTypeBySlug(k.course_type)?.label || k.course_type} — {k.termine} Termine à {k.dauer_min} mins
+                    </span>
+                    {k.termin_daten && k.termin_daten.length > 0 && (
+                      <div className={styles.terminListe}>
+                        {k.termin_daten.map((datum) => (
+                          <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ))}
-              </div>
+                <span className={styles.price}>€{selectedPaket.preis} (Paketpreis)</span>
+              </>
             ) : (
-              selectedCourse.start_datum && selectedCourse.end_datum && (
-                <span className={styles.datesBig}>
-                  {new Date(selectedCourse.start_datum).toLocaleDateString('de-DE')} – {new Date(selectedCourse.end_datum).toLocaleDateString('de-DE')}
-                </span>
-              )
+              <>
+                <span className={styles.datesBig}>{selectedCourse.termine} Termine à {selectedCourse.dauer_min} mins</span>
+                {selectedCourse.termin_daten && selectedCourse.termin_daten.length > 0 ? (
+                  <div className={styles.terminListe}>
+                    {selectedCourse.termin_daten.map((datum) => (
+                      <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
+                    ))}
+                  </div>
+                ) : (
+                  selectedCourse.start_datum && selectedCourse.end_datum && (
+                    <span className={styles.datesBig}>
+                      {new Date(selectedCourse.start_datum).toLocaleDateString('de-DE')} – {new Date(selectedCourse.end_datum).toLocaleDateString('de-DE')}
+                    </span>
+                  )
+                )}
+                <span className={styles.price}>€{selectedCourse.preis}</span>
+              </>
             )}
-            <span className={styles.price}>€{selectedCourse.preis}</span>
           </div>
 
           <form className={styles.form} onSubmit={handleSubmit}>
@@ -446,11 +629,28 @@ export default function Booking() {
               </div>
             </div>
 
-            <ExtraFields
-              courseTypeSlug={selectedCourse.course_type}
-              values={extra}
-              onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-            />
+            {selectedPaket ? (
+              <>
+                <ExtraFields
+                  courseTypeSlug={selectedPaket.kurs1.course_type}
+                  values={extra}
+                  onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+                />
+                {selectedPaket.kurs2.course_type !== selectedPaket.kurs1.course_type && (
+                  <ExtraFields
+                    courseTypeSlug={selectedPaket.kurs2.course_type}
+                    values={extra}
+                    onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+                  />
+                )}
+              </>
+            ) : (
+              <ExtraFields
+                courseTypeSlug={selectedCourse.course_type}
+                values={extra}
+                onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+              />
+            )}
 
             {submitError && <p className={styles.empty}>{submitError}</p>}
 

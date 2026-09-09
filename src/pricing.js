@@ -32,3 +32,33 @@ export function calculatePreis(courseTypeSlug, termine, zusatzCourseTypes = []) 
   const preisCents = alleTypen.length > 1 ? summeCents - 1000 : summeCents
   return preisCents / 100
 }
+
+// Preisformel für Kombi-Pakete (zwei eigenständige, unabhängige Kurse zu einer
+// gemeinsamen Buchung gebündelt - anders als der Kombikurs-Rabatt oben, der
+// denselben Kurs nur auf einer zweiten Kursseite zusätzlich anzeigt).
+//
+// Vorgabe von Karo: Der Paketpreis liegt IMMER 10-11% unter der Summe der
+// beiden Einzelpreise, gerundet auf 5€-Schritte. Da nicht jede Summe exakt
+// einen 5€-Wert in diesem schmalen Korridor hat, wird unter allen 5€-Schritten
+// derjenige gewählt, dessen Rabatt am nächsten an (oder innerhalb) 10-11% liegt.
+export function calculatePaketPreis(preis1, preis2) {
+  const p1 = Number(preis1)
+  const p2 = Number(preis2)
+  if (!p1 || !p2) return null
+  const summe = p1 + p2
+
+  let bester = null
+  let besteAbweichung = Infinity
+  for (let preis = 0; preis <= summe; preis += 5) {
+    const rabattProzent = ((summe - preis) / summe) * 100
+    const abweichung =
+      rabattProzent >= 10 && rabattProzent <= 11
+        ? 0
+        : Math.min(Math.abs(rabattProzent - 10), Math.abs(rabattProzent - 11))
+    if (abweichung < besteAbweichung) {
+      besteAbweichung = abweichung
+      bester = preis
+    }
+  }
+  return bester
+}
