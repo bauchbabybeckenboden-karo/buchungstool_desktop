@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react'
 import styles from './ImportPanel.module.css'
 import { supabase } from '../supabase.js'
 import { COURSE_TYPES } from '../courseTypes.js'
-import { guessCourseType, wochentagLabel, endDateForTermine, datesForTermine } from '../importParser.js'
+import {
+  guessCourseType,
+  wochentagLabel,
+  endDateForTermine,
+  datesForTermine,
+  ermittleDurchlaeufe,
+  echteTermineFuerDurchlauf,
+} from '../importParser.js'
 import { calculatePreis } from '../pricing.js'
 
 export default function ImportPanel({ onImported }) {
@@ -19,13 +26,13 @@ export default function ImportPanel({ onImported }) {
     setLoading(true)
     setError(null)
 
-    const [gruppenRes, kurseRes] = await Promise.all([
+    const [proxyRes, kurseRes] = await Promise.all([
       fetch('/.netlify/functions/kursabfrage-gruppen').then((r) => r.json()),
-      supabase.from('kurse').select('source_gruppen_key, termin_daten').not('source_gruppen_key', 'is', null),
+      supabase.from('kurse').select('source_gruppen_key, start_datum').not('source_gruppen_key', 'is', null),
     ])
 
-    if (gruppenRes?.error) {
-      setError('Kursabfrage konnte nicht geladen werden: ' + gruppenRes.error)
+    if (proxyRes?.error) {
+      setError('Kursabfrage konnte nicht geladen werden: ' + proxyRes.error)
       setLoading(false)
       return
     }
@@ -37,53 +44,89 @@ export default function ImportPanel({ onImported }) {
 
     // Eine Kursabfrage-"Gruppe" ist ein DAUERHAFTER wöchentlicher Termin
     // (die dates-Liste reicht oft jahrelang in die Zukunft) - keine
-    // einmalige 5-Termine-Kurs-Runde. Ein Kurs aus dieser Gruppe zu
-    // importieren darf die Gruppe deshalb NICHT für immer ausblenden,
-    // sonst verschwindet jeder folgende Kurs-Durchlauf (z.B. die
-    // nächsten 5 Termine nach den schon importierten) unwiderruflich aus
-    // der Vorschlagsliste. Stattdessen: pro Gruppe alle bereits über
-    // bestehende Kurse "verbrauchten" Einzeltermine sammeln (anhand von
-    // source_gruppen_key mit dem Präfix "<gruppenId>_") und immer den
-    // nächsten noch nicht verbrauchten Termin-Block vorschlagen.
+    // einmalige Kurs-Runde. Welche Termine tatsächlich EINEN Durchlauf
+    // bilden, legt Karo manuell in der Kursabfrage-App per Notiz fest
+    // ("voraussichtlicher Kursstart" / "voraussichtlich letzte
+    // Kursstunde", siehe ermittleDurchlaeufe) - inkl. einzelner
+    // Pausentermine, die innerhalb dieses Zeitraums NICHT stattfinden
+    // (bbb_removed_v2). Eine einfache "nächste 5 freie Termine"-Annahme
+    // ist falsch, weil Durchläufe unterschiedlich lang sein können und
+    // Pausenwochen enthalten.
+    const { gruppen, removed, notizen } = proxyRes || {}
     const kurse = kurseRes.data || []
-    const candidates = Object.entries(gruppenRes || {})
+
+    const candidates = Object.entries(gruppen || {})
       .map(([groupId, gruppe]) => {
         const praefix = groupId + '_'
-        const verbraucht = new Set()
-        kurse.forEach((k) => {
-          if (!k.source_gruppen_key || !Array.isArray(k.termin_daten)) return
-          // Ältere Importe (vor dieser Korrektur) haben den nackten
-          // groupId als source_gruppen_key gespeichert (Alt-Format);
-          // neue Importe hängen "_<Startdatum>" an (Neu-Format, siehe
-          // unten). Beide müssen als "zu dieser Gruppe gehörig" erkannt
-          // werden, sonst würden schon importierte Alt-Kurse fälschlich
-          // nicht als verbraucht gelten und ihre Termine erneut
-          // vorgeschlagen.
-          const gehoertZurGruppe = k.source_gruppen_key === groupId || k.source_gruppen_key.indexOf(praefix) === 0
-          if (gehoertZurGruppe) k.termin_daten.forEach((d) => verbraucht.add(d))
-        })
-        const freieDaten = (gruppe.dates || []).filter((d) => !verbraucht.has(d))
-        if (freieDaten.length === 0) return null // komplett importiert, aktuell keine weiteren Termine übrig
 
-        const defaultTermine = 5
+        // Welche Durchlauf-Start-Daten dieser Gruppe wurden schon importiert?
+        // Alt-Format (vor dieser Korrektur): source_gruppen_key = nackter groupId.
+        // Neu-Format: source_gruppen_key = "<groupId>_<startDatum>".
+        const importierteStarts = new Set()
+        kurse.forEach((k) => {
+          if (!k.source_gruppen_key) return
+          if (k.source_gruppen_key === groupId) {
+            if (k.start_datum) importierteStarts.add(k.start_datum)
+          } else if (k.source_gruppen_key.indexOf(praefix) === 0) {
+            importierteStarts.add(k.source_gruppen_key.slice(praefix.length))
+          }
+        })
+
+        const durchlaeufe = ermittleDurchlaeufe(gruppe, groupId, notizen)
+        const removedForGruppe = (removed || {})[groupId] || []
+
+        // Ersten noch nicht importierten, vollständig markierten Durchlauf
+        // (Start UND Ende gesetzt) mit mindestens einem echten Termin finden.
+        let gewaehlterDurchlauf = null
+        let termineDesDurchlaufs = null
+        for (const dl of durchlaeufe) {
+          if (!dl.ende || importierteStarts.has(dl.start)) continue
+          const termine = echteTermineFuerDurchlauf(gruppe, dl, removedForGruppe)
+          if (termine && termine.length > 0) {
+            gewaehlterDurchlauf = dl
+            termineDesDurchlaufs = termine
+            break
+          }
+        }
+
+        // Fallback nur für eine komplett neue Gruppe: noch nie importiert
+        // UND noch keine einzige "Ende"-Notiz gesetzt -> ersten 5 Termine ab
+        // Gruppenstart vorschlagen, damit die Gruppe nicht spurlos fehlt,
+        // bevor Karo überhaupt eine Notiz gesetzt hat.
+        if (!gewaehlterDurchlauf && importierteStarts.size === 0 && durchlaeufe.every((dl) => !dl.ende)) {
+          const removedSet = new Set(removedForGruppe)
+          const alleDaten = (gruppe.dates || []).filter((d) => !removedSet.has(d))
+          const startDatum = gruppe.start || alleDaten[0]
+          const abStart = alleDaten.filter((d) => d >= startDatum)
+          if (abStart.length > 0) {
+            gewaehlterDurchlauf = { start: startDatum, ende: null }
+            termineDesDurchlaufs = abStart.slice(0, 5)
+          }
+        }
+
+        if (!gewaehlterDurchlauf || !termineDesDurchlaufs || termineDesDurchlaufs.length === 0) return null
+
+        const termineAnzahl = termineDesDurchlaufs.length
         const courseTypeGuess = guessCourseType(gruppe.name)
-        const startDatum = freieDaten[0]
+        const startDatum = termineDesDurchlaufs[0]
+        const endDatum = termineDesDurchlaufs[termineDesDurchlaufs.length - 1]
+
         return {
           key: groupId + '_' + startDatum,
           groupId,
           gruppe,
-          freieDaten,
+          termineDesDurchlaufs,
           form: {
             course_type: courseTypeGuess,
             name: gruppe.name,
-            termine: defaultTermine,
-            preis: calculatePreis(courseTypeGuess, defaultTermine, []) ?? '',
+            termine: termineAnzahl,
+            preis: calculatePreis(courseTypeGuess, termineAnzahl, []) ?? '',
             max_teilnehmerinnen: '',
             start_datum: startDatum,
-            end_datum: endDateForTermine(freieDaten, defaultTermine),
+            end_datum: endDatum,
             uhrzeit: gruppe.uhrzeit || '',
             zusatz_course_types: [],
-            termin_daten: datesForTermine(freieDaten, defaultTermine),
+            termin_daten: termineDesDurchlaufs,
           },
         }
       })
@@ -101,8 +144,8 @@ export default function ImportPanel({ onImported }) {
         // Wenn sich die Anzahl Termine ändert, End-Datum und Einzeltermine aus den noch freien
         // Terminen dieser Gruppe neu berechnen (nicht aus der kompletten, oft jahrelangen Liste).
         if ('termine' in changes) {
-          form.end_datum = endDateForTermine(r.freieDaten, changes.termine)
-          form.termin_daten = datesForTermine(r.freieDaten, changes.termine)
+          form.end_datum = endDateForTermine(r.termineDesDurchlaufs, changes.termine)
+          form.termin_daten = datesForTermine(r.termineDesDurchlaufs, changes.termine)
         }
         // Preis automatisch nach Karos Preisformel neu berechnen, wenn Kursart/Termine/Kombikurs sich ändern.
         if ('termine' in changes || 'course_type' in changes || 'zusatz_course_types' in changes) {
@@ -171,7 +214,7 @@ export default function ImportPanel({ onImported }) {
               <div className={styles.original}>
                 <strong>Aus Kursabfrage:</strong> {row.gruppe.name}
                 <br />
-                {wochentagLabel(row.gruppe.wochentag)}s, {row.gruppe.uhrzeit} Uhr — nächster freier Termin-Block ab: {row.freieDaten[0]}
+                {wochentagLabel(row.gruppe.wochentag)}s, {row.gruppe.uhrzeit} Uhr — nächster Durchlauf: {row.termineDesDurchlaufs[0]} bis {row.termineDesDurchlaufs[row.termineDesDurchlaufs.length - 1]}
               </div>
 
               <div className={styles.warning}>
