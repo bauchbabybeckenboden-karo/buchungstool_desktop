@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import styles from './ImportPanel.module.css'
 import { supabase } from '../supabase.js'
 import { COURSE_TYPES } from '../courseTypes.js'
-import { parseUmfrageTitel, parseTerminDates } from '../importParser.js'
+import { guessCourseType, wochentagLabel, endDateForTermine } from '../importParser.js'
 
 export default function ImportPanel({ onImported }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [rows, setRows] = useState([]) // { umfrage, form }
+  const [rows, setRows] = useState([]) // { key, gruppe, form }
 
   useEffect(() => {
     if (open) loadCandidates()
@@ -18,35 +18,39 @@ export default function ImportPanel({ onImported }) {
     setLoading(true)
     setError(null)
 
-    const [{ data: umfragen, error: umfragenError }, { data: kurse, error: kurseError }] = await Promise.all([
-      supabase.from('umfragen').select('id, titel, ort, termine, created_at').order('created_at', { ascending: false }),
-      supabase.from('kurse').select('source_umfrage_id').not('source_umfrage_id', 'is', null),
+    const [gruppenRes, kurseRes] = await Promise.all([
+      fetch('/.netlify/functions/kursabfrage-gruppen').then((r) => r.json()),
+      supabase.from('kurse').select('source_gruppen_key').not('source_gruppen_key', 'is', null),
     ])
 
-    if (umfragenError || kurseError) {
-      setError((umfragenError || kurseError).message)
+    if (gruppenRes?.error) {
+      setError('Kursabfrage konnte nicht geladen werden: ' + gruppenRes.error)
+      setLoading(false)
+      return
+    }
+    if (kurseRes.error) {
+      setError(kurseRes.error.message)
       setLoading(false)
       return
     }
 
-    const alreadyImported = new Set((kurse || []).map((k) => k.source_umfrage_id))
-    const candidates = (umfragen || [])
-      .filter((u) => !alreadyImported.has(u.id))
-      .map((u) => {
-        const guess = parseUmfrageTitel(u.titel)
-        const dates = parseTerminDates(u.ort, u.termine)
+    const alreadyImported = new Set((kurseRes.data || []).map((k) => k.source_gruppen_key))
+    const candidates = Object.entries(gruppenRes || {})
+      .filter(([key]) => !alreadyImported.has(key))
+      .map(([key, gruppe]) => {
+        const defaultTermine = 5
         return {
-          umfrage: u,
+          key,
+          gruppe,
           form: {
-            course_type: guess.courseTypeGuess,
-            name: guess.nameGuess,
-            termine: guess.termineGuess || '',
-            preis: guess.preisGuess || '',
+            course_type: guessCourseType(gruppe.name),
+            name: gruppe.name,
+            termine: defaultTermine,
+            preis: '',
             max_teilnehmerinnen: '',
-            start_datum: dates.startDatumGuess,
-            end_datum: dates.endDatumGuess,
+            start_datum: gruppe.start || '',
+            end_datum: endDateForTermine(gruppe.dates, defaultTermine),
             zusatz_course_types: [],
-            isCombo: guess.isCombo,
           },
         }
       })
@@ -55,9 +59,17 @@ export default function ImportPanel({ onImported }) {
     setLoading(false)
   }
 
-  function updateForm(umfrageId, changes) {
+  function updateForm(key, changes) {
     setRows((prev) =>
-      prev.map((r) => (r.umfrage.id === umfrageId ? { ...r, form: { ...r.form, ...changes } } : r))
+      prev.map((r) => {
+        if (r.key !== key) return r
+        const form = { ...r.form, ...changes }
+        // Wenn sich die Anzahl Termine ändert, End-Datum aus der echten Terminliste neu berechnen.
+        if ('termine' in changes) {
+          form.end_datum = endDateForTermine(r.gruppe.dates, changes.termine)
+        }
+        return { ...r, form }
+      })
     )
   }
 
@@ -79,7 +91,7 @@ export default function ImportPanel({ onImported }) {
       end_datum: end_datum || null,
       zusatz_course_types: zusatz_course_types || [],
       sichtbar_auf_website: false,
-      source_umfrage_id: row.umfrage.id,
+      source_gruppen_key: row.key,
     })
 
     if (error) {
@@ -87,69 +99,66 @@ export default function ImportPanel({ onImported }) {
       return
     }
 
-    setRows((prev) => prev.filter((r) => r.umfrage.id !== row.umfrage.id))
+    setRows((prev) => prev.filter((r) => r.key !== row.key))
     if (onImported) onImported()
   }
 
   return (
     <div className={styles.panel}>
       <button className={styles.toggle} onClick={() => setOpen((v) => !v)}>
-        {open ? 'Import ausblenden' : 'Aus Terminumfrage importieren'}
+        {open ? 'Import ausblenden' : 'Aus Kursabfrage importieren'}
       </button>
 
       {open && (
         <div className={styles.content}>
           <p className={styles.hint}>
-            Vorschläge werden aus dem Titel der Terminumfrage abgeleitet (Kursart, Preis, Anzahl Termine) —
-            bitte vor dem Übernehmen prüfen und ggf. korrigieren. Bei Kombikursen wird die Kursart nicht
-            automatisch geraten.
+            Termine (Wochentag, Uhrzeit, Datumsliste) kommen direkt aus der Kursabfrage-App — Kursart, Preis
+            und maximale Teilnehmerinnenzahl bitte einmal ergänzen. Das End-Datum wird automatisch aus der
+            gewählten Anzahl Termine berechnet.
           </p>
 
           {loading && <p className={styles.hint}>Lade …</p>}
           {error && <p className={styles.hint}>Fehler: {error}</p>}
           {!loading && !error && rows.length === 0 && (
-            <p className={styles.hint}>Keine neuen Umfragen zum Importieren gefunden.</p>
+            <p className={styles.hint}>Keine neuen Gruppen zum Importieren gefunden.</p>
           )}
 
           {rows.map((row) => (
-            <div className={styles.card} key={row.umfrage.id}>
+            <div className={styles.card} key={row.key}>
               <div className={styles.original}>
-                <strong>Original-Titel:</strong> {row.umfrage.titel}
+                <strong>Aus Kursabfrage:</strong> {row.gruppe.name}
                 <br />
-                <strong>Termine (Feld "Ort"):</strong> {row.umfrage.ort}
+                {wochentagLabel(row.gruppe.wochentag)}s, {row.gruppe.uhrzeit} Uhr — Start: {row.gruppe.start}
               </div>
 
-              {row.form.isCombo && (
-                <div className={styles.warning}>
-                  Kombikurs erkannt — enthält vermutlich mehrere Kursarten. Wähle unten die Haupt-Kursart und
-                  hake zusätzlich an, auf welchen weiteren Seiten der Kurs ebenfalls erscheinen soll.
-                  <div className={styles.comboOptions}>
-                    {COURSE_TYPES.filter((t) => t.slug !== row.form.course_type).map((t) => (
-                      <label key={t.slug} className={styles.comboOption}>
-                        <input
-                          type="checkbox"
-                          checked={(row.form.zusatz_course_types || []).includes(t.slug)}
-                          onChange={() => {
-                            const current = row.form.zusatz_course_types || []
-                            const next = current.includes(t.slug)
-                              ? current.filter((s) => s !== t.slug)
-                              : [...current, t.slug]
-                            updateForm(row.umfrage.id, { zusatz_course_types: next })
-                          }}
-                        />
-                        {t.label}
-                      </label>
-                    ))}
-                  </div>
+              <div className={styles.warning}>
+                Falls Kombikurs: zusätzlich anzeigen auf
+                <div className={styles.comboOptions}>
+                  {COURSE_TYPES.filter((t) => t.slug !== row.form.course_type).map((t) => (
+                    <label key={t.slug} className={styles.comboOption}>
+                      <input
+                        type="checkbox"
+                        checked={(row.form.zusatz_course_types || []).includes(t.slug)}
+                        onChange={() => {
+                          const current = row.form.zusatz_course_types || []
+                          const next = current.includes(t.slug)
+                            ? current.filter((s) => s !== t.slug)
+                            : [...current, t.slug]
+                          updateForm(row.key, { zusatz_course_types: next })
+                        }}
+                      />
+                      {t.label}
+                    </label>
+                  ))}
                 </div>
-              )}
+              </div>
 
               <div className={styles.fields}>
                 <div>
                   <label>Kursart</label>
                   <select
                     value={row.form.course_type}
-                    onChange={(e) => updateForm(row.umfrage.id, { course_type: e.target.value })}
+                    onChange={(e) => updateForm(row.key, { course_type: e.target.value })}
                   >
                     <option value="">-- wählen --</option>
                     {COURSE_TYPES.map((t) => (
@@ -162,7 +171,7 @@ export default function ImportPanel({ onImported }) {
                   <input
                     type="text"
                     value={row.form.name}
-                    onChange={(e) => updateForm(row.umfrage.id, { name: e.target.value })}
+                    onChange={(e) => updateForm(row.key, { name: e.target.value })}
                   />
                 </div>
                 <div>
@@ -170,7 +179,7 @@ export default function ImportPanel({ onImported }) {
                   <input
                     type="number"
                     value={row.form.termine}
-                    onChange={(e) => updateForm(row.umfrage.id, { termine: e.target.value })}
+                    onChange={(e) => updateForm(row.key, { termine: Number(e.target.value) })}
                   />
                 </div>
                 <div>
@@ -178,7 +187,7 @@ export default function ImportPanel({ onImported }) {
                   <input
                     type="number"
                     value={row.form.preis}
-                    onChange={(e) => updateForm(row.umfrage.id, { preis: e.target.value })}
+                    onChange={(e) => updateForm(row.key, { preis: e.target.value })}
                   />
                 </div>
                 <div>
@@ -186,7 +195,7 @@ export default function ImportPanel({ onImported }) {
                   <input
                     type="number"
                     value={row.form.max_teilnehmerinnen}
-                    onChange={(e) => updateForm(row.umfrage.id, { max_teilnehmerinnen: e.target.value })}
+                    onChange={(e) => updateForm(row.key, { max_teilnehmerinnen: e.target.value })}
                   />
                 </div>
                 <div>
@@ -194,24 +203,18 @@ export default function ImportPanel({ onImported }) {
                   <input
                     type="date"
                     value={row.form.start_datum}
-                    onChange={(e) => updateForm(row.umfrage.id, { start_datum: e.target.value })}
+                    onChange={(e) => updateForm(row.key, { start_datum: e.target.value })}
                   />
                 </div>
                 <div>
-                  <label>Letzter Termin</label>
+                  <label>Letzter Termin (automatisch)</label>
                   <input
                     type="date"
                     value={row.form.end_datum}
-                    onChange={(e) => updateForm(row.umfrage.id, { end_datum: e.target.value })}
+                    onChange={(e) => updateForm(row.key, { end_datum: e.target.value })}
                   />
                 </div>
               </div>
-
-              {(!row.form.start_datum || !row.form.end_datum) && (
-                <div className={styles.warning}>
-                  Termine konnten nicht sicher aus dem Feld "Ort" erkannt werden — bitte oben von Hand eintragen.
-                </div>
-              )}
 
               <button className={styles.importButton} onClick={() => importRow(row)}>
                 Als Kurs übernehmen
