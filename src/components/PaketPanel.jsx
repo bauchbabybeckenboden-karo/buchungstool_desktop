@@ -245,137 +245,137 @@ export default function PaketPanel() {
                         <select
                           value={bearbeitenForm.kursId2}
                           onChange={(e) => aktualisiereBearbeitenForm({ kursId2: e.target.value })}
-                      >
-                        <option value="">-- wählen --</option>
-                        {alleKurse.map((k) => (
-                          <option key={k.id} value={k.id} disabled={k.id === bearbeitenForm.kursId1}>
-                            {kursLabel(k)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className={styles.fieldFull}>
-                      <label>Paketname</label>
-                      <input
-                        type="text"
-                        value={bearbeitenForm.name}
-                        onChange={(e) => aktualisiereBearbeitenForm({ name: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label>Paketpreis (€)</label>
-                      <div className={styles.preisRow}>
+                        >
+                          <option value="">-- wählen --</option>
+                          {alleKurse.map((k) => (
+                            <option key={k.id} value={k.id} disabled={k.id === bearbeitenForm.kursId1}>
+                              {kursLabel(k)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className={styles.fieldFull}>
+                        <label>Paketname</label>
                         <input
-                          type="number"
-                          value={bearbeitenForm.preis}
-                          onChange={(e) => aktualisiereBearbeitenForm({ preis: e.target.value })}
+                          type="text"
+                          value={bearbeitenForm.name}
+                          onChange={(e) => aktualisiereBearbeitenForm({ name: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label>Paketpreis (€)</label>
+                        <div className={styles.preisRow}>
+                          <input
+                            type="number"
+                            value={bearbeitenForm.preis}
+                            onChange={(e) => aktualisiereBearbeitenForm({ preis: e.target.value })}
+                          />
+                          <button
+                            type="button"
+                            className={styles.calcButton}
+                            onClick={recalcPreisBearbeiten}
+                            title="Automatisch berechnen (10-11% Rabatt)"
+                          >
+                            ↻
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <span className={styles.hint}>
+                      Hinweis: Bereits angemeldete Teilnehmerinnen bleiben in ihren bisherigen Kursen. Diese Änderung
+                      wirkt sich nur auf künftige Buchungen dieses Pakets aus.
+                    </span>
+
+                    <label className={styles.comboOption}>
+                      <input
+                        type="checkbox"
+                        checked={bearbeitenForm.sichtbar_auf_website}
+                        onChange={(e) => aktualisiereBearbeitenForm({ sichtbar_auf_website: e.target.checked })}
                       />
-                      <button
-                        type="button"
-                        className={styles.calcButton}
-                        onClick={recalcPreisBearbeiten}
-                        title="Automatisch berechnen (10-11% Rabatt)"
-                      >
-                        ↻
+                      Auf Website zeigen
+                    </label>
+
+                    <div className={styles.cardActions}>
+                      <button type="button" className={styles.importButton} onClick={speichereBearbeitung}>
+                        Speichern
+                      </button>
+                      <button type="button" className={styles.deleteButton} onClick={abbrechenBearbeiten}>
+                        Abbrechen
                       </button>
                     </div>
                   </div>
-                </div>
-
-                <span className={styles.hint}>
-                  Hinweis: Bereits angemeldete Teilnehmerinnen bleiben in ihren bisherigen Kursen. Diese Änderung
-                  wirkt sich nur auf künftige Buchungen dieses Pakets aus.
-                </span>
-
-                <label className={styles.comboOption}>
-                  <input
-                    type="checkbox"
-                    checked={bearbeitenForm.sichtbar_auf_website}
-                    onChange={(e) => aktualisiereBearbeitenForm({ sichtbar_auf_website: e.target.checked })}
-                  />
-                  Auf Website zeigen
-                </label>
-
-                <div className={styles.cardActions}>
-                  <button type="button" className={styles.importButton} onClick={speichereBearbeitung}>
-                    Speichern
-                  </button>
-                  <button type="button" className={styles.deleteButton} onClick={abbrechenBearbeiten}>
-                    Abbrechen
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className={styles.card} key={p.id}>
-                <strong>{p.name}</strong>
-                <span className={styles.original}>
-                  {kursLabel(kursById(p.kurs_id_1))}
-                  <br />
-                  {kursLabel(kursById(p.kurs_id_2))}
-                </span>
-                <span>Paketpreis: {p.preis}€</span>
-                <label className={styles.comboOption}>
-                  <input type="checkbox" checked={p.sichtbar_auf_website} onChange={() => toggleSichtbar(p)} />
-                  Auf Website zeigen
-                </label>
-                <div className={styles.cardActions}>
-                  <button type="button" className={styles.duplicateButton} onClick={() => starteBearbeiten(p)}>
-                    Bearbeiten
-                  </button>
-                  <button type="button" className={styles.deleteButton} onClick={() => loeschen(p)}>
-                    Paket löschen
-                  </button>
-                </div>
-              </div>
-            )
+                ) : (
+                  <div className={styles.card} key={p.id}>
+                    <strong>{p.name}</strong>
+                    <span className={styles.original}>
+                      {kursLabel(kursById(p.kurs_id_1))}
+                      <br />
+                      {kursLabel(kursById(p.kurs_id_2))}
+                    </span>
+                    <span>Paketpreis: {p.preis}€</span>
+                    <label className={styles.comboOption}>
+                      <input type="checkbox" checked={p.sichtbar_auf_website} onChange={() => toggleSichtbar(p)} />
+                      Auf Website zeigen
+                    </label>
+                    <div className={styles.cardActions}>
+                      <button type="button" className={styles.duplicateButton} onClick={() => starteBearbeiten(p)}>
+                        Bearbeiten
+                      </button>
+                      <button type="button" className={styles.deleteButton} onClick={() => loeschen(p)}>
+                        Paket löschen
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
           )}
-          </div>
-        )}
 
-        <div className={styles.card}>
-          <strong>Neues Kombi-Paket</strong>
-          <div className={styles.fields}>
-            <div>
-              <label>Kurs 1</label>
-              <select value={form.kursId1} onChange={(e) => updateForm({ kursId1: e.target.value })}>
-                <option value="">-- wählen --</option>
-                {alleKurse.map((k) => (
-                  <option key={k.id} value={k.id} disabled={k.id === form.kursId2}>
-                    {kursLabel(k)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label>Kurs 2</label>
-              <select value={form.kursId2} onChange={(e) => updateForm({ kursId2: e.target.value })}>
-                <option value="">-- wählen --</option>
-                {alleKurse.map((k) => (
-                  <option key={k.id} value={k.id} disabled={k.id === form.kursId1}>
-                    {kursLabel(k)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className={styles.fieldFull}>
-              <label>Paketname</label>
-              <input type="text" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} />
-            </div>
-            <div>
-              <label>Paketpreis (€)</label>
-              <div className={styles.preisRow}>
-                <input type="number" value={form.preis} onChange={(e) => updateForm({ preis: e.target.value })} />
-                <button
-                  type="button"
-                  className={styles.calcButton}
-                  onClick={recalcPreis}
-                  title="Automatisch berechnen (10-11% Rabatt)"
-                >
-                  ↻
-                </button>
+          <div className={styles.card}>
+            <strong>Neues Kombi-Paket</strong>
+            <div className={styles.fields}>
+              <div>
+                <label>Kurs 1</label>
+                <select value={form.kursId1} onChange={(e) => updateForm({ kursId1: e.target.value })}>
+                  <option value="">-- wählen --</option>
+                  {alleKurse.map((k) => (
+                    <option key={k.id} value={k.id} disabled={k.id === form.kursId2}>
+                      {kursLabel(k)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label>Kurs 2</label>
+                <select value={form.kursId2} onChange={(e) => updateForm({ kursId2: e.target.value })}>
+                  <option value="">-- wählen --</option>
+                  {alleKurse.map((k) => (
+                    <option key={k.id} value={k.id} disabled={k.id === form.kursId1}>
+                      {kursLabel(k)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className={styles.fieldFull}>
+                <label>Paketname</label>
+                <input type="text" value={form.name} onChange={(e) => updateForm({ name: e.target.value })} />
+              </div>
+              <div>
+                <label>Paketpreis (€)</label>
+                <div className={styles.preisRow}>
+                  <input type="number" value={form.preis} onChange={(e) => updateForm({ preis: e.target.value })} />
+                  <button
+                    type="button"
+                    className={styles.calcButton}
+                    onClick={recalcPreis}
+                    title="Automatisch berechnen (10-11% Rabatt)"
+                  >
+                    ↻
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
             {k1 && k2 && (
               <span className={styles.original}>
