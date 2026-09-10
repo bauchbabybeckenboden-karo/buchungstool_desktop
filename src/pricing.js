@@ -62,3 +62,45 @@ export function calculatePaketPreis(preis1, preis2) {
   }
   return bester
 }
+
+// Heutiges Datum als "YYYY-MM-DD" in der Zeitzone Europe/Berlin - gleiches
+// Format wie die Einträge in termin_daten, damit ein einfacher String-
+// Vergleich reicht (kein Date-Parsing/Zeitzonen-Ärger).
+function heuteISOBerlin() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
+}
+
+// Anzahl der Einzeltermine eines Kurses, die bereits in der Vergangenheit
+// liegen (heutiger Termin zählt noch nicht als "vergangen"). Ohne einzelne
+// Termindaten (termin_daten, z.B. bei von Hand angelegten Kursen ohne
+// Kursabfrage-Import) kann das nicht ermittelt werden - dann sicherheitshalber
+// 0, also kein Abzug.
+export function vergangeneTermine(course) {
+  if (!course || !Array.isArray(course.termin_daten) || course.termin_daten.length === 0) return 0
+  const heute = heuteISOBerlin()
+  return course.termin_daten.filter((d) => d < heute).length
+}
+
+// Reduziert einen Kurs- oder Paketpreis anteilig um die bereits
+// stattgefundenen Termine - pauschal 16€ pro Termin (NICHT die Terminrate der
+// Kursart, die für den Grundpreis gilt - bei Schwangerfit z.B. bewusst
+// abweichend). Manche Kurse weichen von den 16€ ab (z.B. Soyo Donnerstags:
+// nur 15€), das ist pro Kurs über kurse.reduzierung_pro_termin einstellbar
+// (Default 16, siehe Admin-Bereich). So zahlen späte Anmeldungen nur für die
+// Termine, die noch stattfinden. Ein Kombi-Paket übergibt hier beide
+// zugrundeliegenden Kurse, ein Einzelkurs nur sich selbst.
+const STANDARD_REDUZIERUNG_CENTS = 1600
+
+export function reduzierterPreis(basisPreis, ...courses) {
+  const abzugCents = courses.reduce((summe, course) => {
+    if (!course) return summe
+    const rateCents =
+      course.reduzierung_pro_termin != null
+        ? Math.round(Number(course.reduzierung_pro_termin) * 100)
+        : STANDARD_REDUZIERUNG_CENTS
+    return summe + rateCents * vergangeneTermine(course)
+  }, 0)
+  if (abzugCents === 0) return Number(basisPreis)
+  const preisCents = Math.round(Number(basisPreis) * 100) - abzugCents
+  return Math.max(0, preisCents) / 100
+}

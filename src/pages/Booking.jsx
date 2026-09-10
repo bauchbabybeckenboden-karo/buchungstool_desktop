@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
+import { reduzierterPreis, vergangeneTermine } from '../pricing.js'
 
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
@@ -77,6 +78,12 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   const ausgebucht = spotsLeft !== null && spotsLeft <= 0
   const terminliste = formatTerminlisteKurz(terminDatenOderRange(course))
 
+  // Wer erst nach Kursbeginn bucht, zahlt nur noch für die verbleibenden
+  // Termine - der Preis sinkt automatisch um die Terminrate der Kursart je
+  // bereits stattgefundenem Termin (siehe pricing.js).
+  const effektivPreis = reduzierterPreis(course.preis, course)
+  const reduziert = effektivPreis < Number(course.preis)
+
   const klassen = [styles.termineBox]
   if (istWarnung) klassen.push(styles.termineBoxHighlight)
   if (selected) klassen.push(styles.termineBoxSelected)
@@ -93,7 +100,9 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
       <div className={styles.termineTextGroup}>
         <p className={styles.termineLabel}>{beschriftung}</p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
-        <p className={styles.termineText}>{course.termine} Termine · {course.preis}€</p>
+        <p className={styles.termineText}>
+          {course.termine} Termine · {effektivPreis}€{reduziert ? ` (statt ${course.preis}€)` : ''}
+        </p>
         {terminliste && <p className={styles.termineDatesLine}>📍 {terminliste}</p>}
       </div>
       {!ausgebucht && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
@@ -107,6 +116,11 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
 function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   const ausgebucht = spotsLeft !== null && spotsLeft <= 0
   const wenigePlaetze = !ausgebucht && spotsLeft !== null && spotsLeft <= 3
+
+  // Reduzierung gilt für beide gebündelten Kurse einzeln - wer erst nach
+  // Beginn eines oder beider Kurse bucht, zahlt entsprechend weniger.
+  const effektivPreis = reduzierterPreis(paket.preis, paket.kurs1, paket.kurs2)
+  const reduziert = effektivPreis < Number(paket.preis)
 
   let titelText = paket.name
   if (ausgebucht) titelText = `Ausgebucht — ${paket.name}`
@@ -142,7 +156,9 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         {kursZeile(paket.kurs1)}
         {kursZeile(paket.kurs2)}
-        <p className={styles.termineText}>Paketpreis: {paket.preis}€</p>
+        <p className={styles.termineText}>
+          Paketpreis: {effektivPreis}€{reduziert ? ` (statt ${paket.preis}€)` : ''}
+        </p>
       </div>
       {!ausgebucht && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
     </div>
@@ -369,6 +385,18 @@ export default function Booking() {
   const selectedCourse = courses.find((c) => c.id === selectedId)
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
 
+  // Effektiver (ggf. reduzierter) Preis für die aktuelle Auswahl - wird für
+  // Anzeige UND die verschickte Bestätigungsmail verwendet, damit beide
+  // übereinstimmen (siehe pricing.js: reduzierterPreis).
+  const effektivPreisKurs = selectedCourse ? reduzierterPreis(selectedCourse.preis, selectedCourse) : null
+  const vergangeneKurs = selectedCourse ? vergangeneTermine(selectedCourse) : 0
+  const effektivPreisPaket = selectedPaket
+    ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
+    : null
+  const vergangenePaket = selectedPaket
+    ? vergangeneTermine(selectedPaket.kurs1) + vergangeneTermine(selectedPaket.kurs2)
+    : 0
+
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
@@ -471,7 +499,7 @@ export default function Booking() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           buchung: { ...general, zusatzfelder: extra },
-          paket: { name: selectedPaket.name, preis: selectedPaket.preis, kurse: [selectedPaket.kurs1, selectedPaket.kurs2] },
+          paket: { name: selectedPaket.name, preis: effektivPreisPaket, kurse: [selectedPaket.kurs1, selectedPaket.kurs2] },
         }),
       }).catch(() => {})
       return
@@ -493,7 +521,7 @@ export default function Booking() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         buchung: { ...general, zusatzfelder: extra },
-        kurs: selectedCourse,
+        kurs: { ...selectedCourse, preis: effektivPreisKurs },
       }),
     }).catch(() => {})
   }
@@ -573,7 +601,14 @@ export default function Booking() {
                     )}
                   </div>
                 ))}
-                <span className={styles.price}>€{selectedPaket.preis} (Paketpreis)</span>
+                <span className={styles.price}>
+                  €{effektivPreisPaket} (Paketpreis)
+                  {effektivPreisPaket < Number(selectedPaket.preis) && (
+                    <span className={styles.termineText}>
+                      {' '}statt €{selectedPaket.preis} – reduziert, da bereits {vergangenePaket} Termin{vergangenePaket === 1 ? '' : 'e'} stattgefunden haben
+                    </span>
+                  )}
+                </span>
               </>
             ) : (
               <>
@@ -591,7 +626,14 @@ export default function Booking() {
                     </span>
                   )
                 )}
-                <span className={styles.price}>€{selectedCourse.preis}</span>
+                <span className={styles.price}>
+                  €{effektivPreisKurs}
+                  {effektivPreisKurs < Number(selectedCourse.preis) && (
+                    <span className={styles.termineText}>
+                      {' '}statt €{selectedCourse.preis} – reduziert, da bereits {vergangeneKurs} Termin{vergangeneKurs === 1 ? '' : 'e'} stattgefunden haben
+                    </span>
+                  )}
+                </span>
               </>
             )}
           </div>

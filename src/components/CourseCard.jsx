@@ -176,6 +176,15 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
           </div>
         </div>
         <div>
+          <label>Reduzierung / vergangenem Termin (€)</label>
+          <input
+            type="number"
+            value={course.reduzierung_pro_termin}
+            onChange={(e) => handleField('reduzierung_pro_termin', Number(e.target.value))}
+            title="Wie viel der Preis auf der Buchungsseite pro bereits stattgefundenem Termin sinkt (Standard 16€)"
+          />
+        </div>
+        <div>
           <label>Max. Teilnehmerinnen</label>
           <input type="number" value={course.max_teilnehmerinnen} onChange={(e) => handleField('max_teilnehmerinnen', Number(e.target.value))} />
         </div>
