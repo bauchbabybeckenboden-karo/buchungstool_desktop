@@ -3,7 +3,7 @@ import styles from './Admin.module.css'
 import { COURSE_TYPES, getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 import CourseCard from '../components/CourseCard.jsx'
-import ImportPanel from '../components/ImportPanel.jsx'
+import { useImportCandidates, ImportCandidateCard } from '../components/ImportPanel.jsx'
 import PaketPanel from '../components/PaketPanel.jsx'
 
 // Datum, nach dem ein Kurs chronologisch einsortiert wird - der erste
@@ -14,6 +14,7 @@ function kursSortDatum(course) {
 }
 
 const OHNE_TERMIN = 'Ohne Termin'
+const BEKANNTE_KURSARTEN = COURSE_TYPES.map((t) => t.slug)
 
 export default function Admin() {
   const [courses, setCourses] = useState([])
@@ -29,6 +30,12 @@ export default function Admin() {
   useEffect(() => {
     loadCourses()
   }, [])
+
+  // Noch nicht importierte Kursabfrage-Kandidaten - werden weiter unten direkt
+  // zusammen mit den schon echten Kursen in derselben Kursart-/Jahres-Gliederung
+  // angezeigt (statt in einer separaten, immer neu aufzuklappenden Liste).
+  const { rows: importRows, loading: importLoading, error: importError, updateForm: updateImportForm, importRow } =
+    useImportCandidates(loadCourses)
 
   async function loadCourses() {
     setLoading(true)
@@ -97,7 +104,21 @@ export default function Admin() {
     jahresGruppen.get(jahr).push(course)
   })
 
-  const jahre = [...jahresGruppen.keys()].sort((a, b) => {
+  // Kursabfrage-Kandidaten für diese Kursart (plus solche mit noch
+  // unbekannter/falscher Kursart-Erkennung - die sollen nicht in keinem Tab
+  // untergehen, deshalb erscheinen sie auf jedem Tab, bis die Kursart
+  // korrigiert wurde) nach Jahr gruppieren.
+  const importRowsFuerTab = importRows.filter(
+    (r) => r.form.course_type === activeType || !BEKANNTE_KURSARTEN.includes(r.form.course_type)
+  )
+  const importJahresGruppen = new Map()
+  importRowsFuerTab.forEach((row) => {
+    const jahr = row.form.start_datum ? row.form.start_datum.slice(0, 4) : OHNE_TERMIN
+    if (!importJahresGruppen.has(jahr)) importJahresGruppen.set(jahr, [])
+    importJahresGruppen.get(jahr).push(row)
+  })
+
+  const jahre = [...new Set([...jahresGruppen.keys(), ...importJahresGruppen.keys()])].sort((a, b) => {
     if (a === OHNE_TERMIN) return 1
     if (b === OHNE_TERMIN) return -1
     return a.localeCompare(b)
@@ -142,8 +163,9 @@ export default function Admin() {
 
       {loading && <p className={styles.hint}>Lade Kurse …</p>}
       {loadError && <p className={styles.hint}>Kurse konnten nicht geladen werden: {loadError}</p>}
+      {importLoading && <p className={styles.hint}>Lade Kursabfrage-Kandidaten …</p>}
+      {importError && <p className={styles.hint}>Kursabfrage konnte nicht geladen werden: {importError}</p>}
 
-      <ImportPanel onImported={loadCourses} />
       <PaketPanel />
 
       <div className={styles.typeTabs}>
@@ -159,7 +181,8 @@ export default function Admin() {
       </div>
 
       {jahre.map((jahr) => {
-        const kurseDesJahres = jahresGruppen.get(jahr)
+        const kurseDesJahres = jahresGruppen.get(jahr) || []
+        const importsDesJahres = importJahresGruppen.get(jahr) || []
         const offen = istJahrOffen(jahr)
         return (
           <div className={styles.jahrGruppe} key={jahr}>
@@ -169,21 +192,41 @@ export default function Admin() {
               onClick={() => toggleJahr(jahr)}
             >
               <span className={styles.jahrPfeil}>{offen ? '▾' : '▸'}</span>
-              {jahr} <span className={styles.jahrAnzahl}>({kurseDesJahres.length})</span>
+              {jahr}{' '}
+              <span className={styles.jahrAnzahl}>
+                ({kurseDesJahres.length + importsDesJahres.length}
+                {importsDesJahres.length > 0 ? `, davon ${importsDesJahres.length} aus Kursabfrage` : ''})
+              </span>
             </button>
             {offen && (
-              <div className={styles.courseList}>
-                {kurseDesJahres.map((course) => (
-                  <CourseCard
-                    key={course.id}
-                    course={course}
-                    siblingCourses={coursesForActiveType}
-                    onUpdateLocal={updateCourseLocal}
-                    onSave={saveCourse}
-                    onReload={loadCourses}
-                  />
-                ))}
-              </div>
+              <>
+                {importsDesJahres.length > 0 && (
+                  <div className={styles.importList}>
+                    {importsDesJahres.map((row) => (
+                      <ImportCandidateCard
+                        key={row.key}
+                        row={row}
+                        onUpdateForm={updateImportForm}
+                        onImport={importRow}
+                      />
+                    ))}
+                  </div>
+                )}
+                {kurseDesJahres.length > 0 && (
+                  <div className={styles.courseList}>
+                    {kurseDesJahres.map((course) => (
+                      <CourseCard
+                        key={course.id}
+                        course={course}
+                        siblingCourses={coursesForActiveType}
+                        onUpdateLocal={updateCourseLocal}
+                        onSave={saveCourse}
+                        onReload={loadCourses}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         )

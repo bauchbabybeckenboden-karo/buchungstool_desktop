@@ -12,23 +12,20 @@ import {
 } from '../importParser.js'
 import { calculatePreis } from '../pricing.js'
 
-const OHNE_TERMIN = 'Ohne Termin'
-const KURSART_REIHENFOLGE = COURSE_TYPES.map((t) => t.slug)
-
-export default function ImportPanel({ onImported }) {
-  // Standardmäßig direkt offen und geladen - Karo will die anstehenden
-  // Kursabfrage-Kandidaten beim Öffnen des Adminbereichs sofort sehen, ohne
-  // jedes Mal erst manuell "Aus Kursabfrage importieren" anklicken zu müssen.
-  const [open, setOpen] = useState(true)
-  const [loading, setLoading] = useState(false)
+// Lädt die noch nicht importierten Kursabfrage-Kandidaten und stellt sie samt
+// Bearbeitungs-/Übernahme-Funktionen bereit. Läuft immer (kein manuelles
+// Anklicken mehr nötig) - Admin.jsx zeigt die Kandidaten direkt zusammen mit
+// den schon echten Kursen in derselben Kursart-/Jahres-Gliederung an, damit
+// Karo nicht mehr zwischen zwei getrennten Listen wechseln muss.
+export function useImportCandidates(onImported) {
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [rows, setRows] = useState([]) // { key, gruppe, form }
-  // Manuelle Auf-/Zuklapp-Entscheidungen pro Jahr-Karteikarte, siehe Admin.jsx.
-  const [jahrOverrides, setJahrOverrides] = useState({})
 
   useEffect(() => {
-    if (open) loadCandidates()
-  }, [open])
+    loadCandidates()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function loadCandidates() {
     setLoading(true)
@@ -136,21 +133,6 @@ export default function ImportPanel({ onImported }) {
         })
       })
 
-    // Nach Kursart (Reihenfolge wie in courseTypes.js/den Tabs im Adminbereich)
-    // und innerhalb einer Kursart chronologisch sortieren - bei weit im Voraus
-    // geplanten Kursabfrage-Gruppen sonst eine unübersichtliche, zufällig
-    // geordnete Liste. Die Sortierung wird einmalig beim Laden festgelegt,
-    // damit eine Zeile beim nachträglichen Ändern der Kursart (Dropdown)
-    // nicht plötzlich mitten in der Bearbeitung springt.
-    candidates.sort((a, b) => {
-      const ia = KURSART_REIHENFOLGE.indexOf(a.form.course_type)
-      const ib = KURSART_REIHENFOLGE.indexOf(b.form.course_type)
-      if (ia !== ib) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
-      const da = a.form.start_datum || ''
-      const db = b.form.start_datum || ''
-      return da < db ? -1 : da > db ? 1 : 0
-    })
-
     setRows(candidates)
     setLoading(false)
   }
@@ -209,179 +191,126 @@ export default function ImportPanel({ onImported }) {
     if (onImported) onImported()
   }
 
-  // Karteikarten pro Jahr (Reihenfolge innerhalb bleibt die oben festgelegte
-  // Kursart-/Datums-Sortierung) - bei weit im Voraus geplanten Gruppen ist
-  // per Default nur das nächste anstehende Jahr aufgeklappt.
-  const jahresGruppen = new Map()
-  rows.forEach((row) => {
-    const jahr = row.form.start_datum ? row.form.start_datum.slice(0, 4) : OHNE_TERMIN
-    if (!jahresGruppen.has(jahr)) jahresGruppen.set(jahr, [])
-    jahresGruppen.get(jahr).push(row)
-  })
-  const jahre = [...jahresGruppen.keys()].sort((a, b) => {
-    if (a === OHNE_TERMIN) return 1
-    if (b === OHNE_TERMIN) return -1
-    return a.localeCompare(b)
-  })
-  const heuteJahr = String(new Date().getFullYear())
-  const naechstesJahrMitKursen = jahre.find((j) => j !== OHNE_TERMIN && j >= heuteJahr) || jahre[0]
+  return { rows, loading, error, updateForm, importRow }
+}
 
-  function istJahrOffen(jahr) {
-    return jahr in jahrOverrides ? jahrOverrides[jahr] : jahr === naechstesJahrMitKursen
-  }
-
-  function toggleJahr(jahr) {
-    setJahrOverrides((prev) => ({ ...prev, [jahr]: !istJahrOffen(jahr) }))
-  }
-
+// Eine einzelne Kursabfrage-Kandidaten-Karte - wird von Admin.jsx direkt in
+// der jeweiligen Kursart-/Jahres-Gruppe zusammen mit den schon echten Kursen
+// (CourseCard) angezeigt, damit Karo nicht mehr zwischen einer separaten
+// Import-Liste und der eigentlichen Kursliste wechseln muss.
+export function ImportCandidateCard({ row, onUpdateForm, onImport }) {
   return (
-    <div className={styles.panel}>
-      <button className={styles.toggle} onClick={() => setOpen((v) => !v)}>
-        {open ? 'Import ausblenden' : 'Aus Kursabfrage importieren'}
-      </button>
+    <div className={styles.card}>
+      <div className={styles.original}>
+        <strong>Aus Kursabfrage:</strong> {row.gruppe.name}
+        <br />
+        {wochentagLabel(row.gruppe.wochentag)}s, {row.gruppe.uhrzeit} Uhr — nächster Durchlauf: {row.termineDesDurchlaufs[0]} bis {row.termineDesDurchlaufs[row.termineDesDurchlaufs.length - 1]}
+      </div>
 
-      {open && (
-        <div className={styles.content}>
-          <p className={styles.hint}>
-            Termine (Wochentag, Uhrzeit, Datumsliste) kommen direkt aus der Kursabfrage-App — Kursart, Preis
-            und maximale Teilnehmerinnenzahl bitte einmal ergänzen. Das End-Datum wird automatisch aus der
-            gewählten Anzahl Termine berechnet.
-          </p>
+      <div className={styles.warning}>
+        Falls Kombikurs: zusätzlich anzeigen auf
+        <div className={styles.comboOptions}>
+          {COURSE_TYPES.filter((t) => t.slug !== row.form.course_type).map((t) => (
+            <label key={t.slug} className={styles.comboOption}>
+              <input
+                type="checkbox"
+                checked={(row.form.zusatz_course_types || []).includes(t.slug)}
+                onChange={() => {
+                  const current = row.form.zusatz_course_types || []
+                  const next = current.includes(t.slug)
+                    ? current.filter((s) => s !== t.slug)
+                    : [...current, t.slug]
+                  onUpdateForm(row.key, { zusatz_course_types: next })
+                }}
+              />
+              {t.label}
+            </label>
+          ))}
+        </div>
+      </div>
 
-          {loading && <p className={styles.hint}>Lade …</p>}
-          {error && <p className={styles.hint}>Fehler: {error}</p>}
-          {!loading && !error && rows.length === 0 && (
-            <p className={styles.hint}>Keine neuen Gruppen zum Importieren gefunden.</p>
-          )}
+      <div className={styles.fields}>
+        <div>
+          <label>Kursart</label>
+          <select
+            value={row.form.course_type}
+            onChange={(e) => onUpdateForm(row.key, { course_type: e.target.value })}
+          >
+            <option value="">-- wählen --</option>
+            {COURSE_TYPES.map((t) => (
+              <option key={t.slug} value={t.slug}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+        <div className={styles.fieldFull}>
+          <label>Kursname</label>
+          <input
+            type="text"
+            value={row.form.name}
+            onChange={(e) => onUpdateForm(row.key, { name: e.target.value })}
+          />
+        </div>
+        <div>
+          <label>Anzahl Termine</label>
+          <input
+            type="number"
+            value={row.form.termine}
+            onChange={(e) => onUpdateForm(row.key, { termine: Number(e.target.value) })}
+          />
+        </div>
+        <div>
+          <label>Preis (€, automatisch)</label>
+          <input
+            type="number"
+            value={row.form.preis}
+            onChange={(e) => onUpdateForm(row.key, { preis: e.target.value })}
+          />
+        </div>
+        <div>
+          <label>Max. Teilnehmerinnen</label>
+          <input
+            type="number"
+            value={row.form.max_teilnehmerinnen}
+            onChange={(e) => onUpdateForm(row.key, { max_teilnehmerinnen: e.target.value })}
+          />
+        </div>
+        <div>
+          <label>Erster Termin</label>
+          <input
+            type="date"
+            value={row.form.start_datum}
+            onChange={(e) => onUpdateForm(row.key, { start_datum: e.target.value })}
+          />
+        </div>
+        <div>
+          <label>Letzter Termin (automatisch)</label>
+          <input
+            type="date"
+            value={row.form.end_datum}
+            onChange={(e) => onUpdateForm(row.key, { end_datum: e.target.value })}
+          />
+        </div>
+      </div>
 
-          {jahre.map((jahr) => {
-            const rowsDesJahres = jahresGruppen.get(jahr)
-            const offen = istJahrOffen(jahr)
-            return (
-              <div className={styles.jahrGruppe} key={jahr}>
-                <button type="button" className={styles.jahrHeader} onClick={() => toggleJahr(jahr)}>
-                  <span className={styles.jahrPfeil}>{offen ? '▾' : '▸'}</span>
-                  {jahr} <span className={styles.jahrAnzahl}>({rowsDesJahres.length})</span>
-                </button>
-                {offen && rowsDesJahres.map((row) => (
-            <div className={styles.card} key={row.key}>
-              <div className={styles.original}>
-                <strong>Aus Kursabfrage:</strong> {row.gruppe.name}
-                <br />
-                {wochentagLabel(row.gruppe.wochentag)}s, {row.gruppe.uhrzeit} Uhr — nächster Durchlauf: {row.termineDesDurchlaufs[0]} bis {row.termineDesDurchlaufs[row.termineDesDurchlaufs.length - 1]}
-              </div>
-
-              <div className={styles.warning}>
-                Falls Kombikurs: zusätzlich anzeigen auf
-                <div className={styles.comboOptions}>
-                  {COURSE_TYPES.filter((t) => t.slug !== row.form.course_type).map((t) => (
-                    <label key={t.slug} className={styles.comboOption}>
-                      <input
-                        type="checkbox"
-                        checked={(row.form.zusatz_course_types || []).includes(t.slug)}
-                        onChange={() => {
-                          const current = row.form.zusatz_course_types || []
-                          const next = current.includes(t.slug)
-                            ? current.filter((s) => s !== t.slug)
-                            : [...current, t.slug]
-                          updateForm(row.key, { zusatz_course_types: next })
-                        }}
-                      />
-                      {t.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className={styles.fields}>
-                <div>
-                  <label>Kursart</label>
-                  <select
-                    value={row.form.course_type}
-                    onChange={(e) => updateForm(row.key, { course_type: e.target.value })}
-                  >
-                    <option value="">-- wählen --</option>
-                    {COURSE_TYPES.map((t) => (
-                      <option key={t.slug} value={t.slug}>{t.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className={styles.fieldFull}>
-                  <label>Kursname</label>
-                  <input
-                    type="text"
-                    value={row.form.name}
-                    onChange={(e) => updateForm(row.key, { name: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label>Anzahl Termine</label>
-                  <input
-                    type="number"
-                    value={row.form.termine}
-                    onChange={(e) => updateForm(row.key, { termine: Number(e.target.value) })}
-                  />
-                </div>
-                <div>
-                  <label>Preis (€, automatisch)</label>
-                  <input
-                    type="number"
-                    value={row.form.preis}
-                    onChange={(e) => updateForm(row.key, { preis: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label>Max. Teilnehmerinnen</label>
-                  <input
-                    type="number"
-                    value={row.form.max_teilnehmerinnen}
-                    onChange={(e) => updateForm(row.key, { max_teilnehmerinnen: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label>Erster Termin</label>
-                  <input
-                    type="date"
-                    value={row.form.start_datum}
-                    onChange={(e) => updateForm(row.key, { start_datum: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label>Letzter Termin (automatisch)</label>
-                  <input
-                    type="date"
-                    value={row.form.end_datum}
-                    onChange={(e) => updateForm(row.key, { end_datum: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              {row.form.termin_daten && row.form.termin_daten.length > 0 && (
-                <div className={styles.original}>
-                  <strong>Einzeltermine ({row.form.termin_daten.length}):</strong>{' '}
-                  {row.form.termin_daten.map((d) => d.split('-').reverse().join('.')).join(', ')}
-                </div>
-              )}
-
-              <label className={styles.comboOption}>
-                <input
-                  type="checkbox"
-                  checked={row.form.ist_online || false}
-                  onChange={(e) => updateForm(row.key, { ist_online: e.target.checked })}
-                />
-                Online-Kurs
-              </label>
-
-              <button className={styles.importButton} onClick={() => importRow(row)}>
-                Als Kurs übernehmen
-              </button>
-            </div>
-                ))}
-              </div>
-            )
-          })}
+      {row.form.termin_daten && row.form.termin_daten.length > 0 && (
+        <div className={styles.original}>
+          <strong>Einzeltermine ({row.form.termin_daten.length}):</strong>{' '}
+          {row.form.termin_daten.map((d) => d.split('-').reverse().join('.')).join(', ')}
         </div>
       )}
+
+      <label className={styles.comboOption}>
+        <input
+          type="checkbox"
+          checked={row.form.ist_online || false}
+          onChange={(e) => onUpdateForm(row.key, { ist_online: e.target.checked })}
+        />
+        Online-Kurs
+      </label>
+
+      <button className={styles.importButton} onClick={() => onImport(row)}>
+        Als Kurs übernehmen
+      </button>
     </div>
   )
 }
