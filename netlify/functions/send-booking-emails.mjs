@@ -21,6 +21,15 @@ const COURSE_TYPE_LABELS = {
   "koerpermitte-beckenboden": "Körpermitte & Beckenboden",
 };
 
+// Label für den in der Kombi-Wunsch-Auswahl (Körpermitte & Beckenboden)
+// angegebenen "bereits laufenden" Kurs - unabhängig von COURSE_TYPE_LABELS,
+// weil hier konkret der jeweilige Wochentags-Kurs gemeint ist, nicht die
+// ganze Kursart.
+const KOMBI_WUNSCH_LABELS = {
+  "somatic-yoga": "Soyo Donnerstags",
+  mamafit: "Mamafit",
+};
+
 const WOCHENTAGE = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const WOCHENTAGE_KURZ = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const MONATE_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
@@ -254,6 +263,14 @@ export default async (req) => {
     const kursBezeichnung = `${courseTypeLabel} ${kurs.termine} Termine`;
     const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
 
+    // Körpermitte & Beckenboden: "Ich buche zusätzlich zu einem laufenden Kurs,
+    // bitte Kombipreis mitteilen" - Wunsch wird nur erfasst, der Kombipreis
+    // wird bewusst NICHT automatisch berechnet (echtes Geld, muss erst
+    // geprüft werden, ob die Person tatsächlich im anderen Kurs angemeldet
+    // ist). Teilnehmerin bekommt eine Ankündigung, Karo eine auffällige
+    // Erinnerung in ihrer Mail.
+    const kombiWunschKursLabel = zusatz.kombiWunsch ? KOMBI_WUNSCH_LABELS[zusatz.kombiWunschKurs] || zusatz.kombiWunschKurs : null;
+
     const uhrzeitEnde = addMinutes(kurs.uhrzeit, kurs.dauer_min);
     const wochentagLang = kurs.start_datum ? WOCHENTAGE[new Date(kurs.start_datum + "T00:00:00").getDay()] : "";
 
@@ -305,6 +322,12 @@ export default async (req) => {
               <span style="font-size:12px;color:#8a7060;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
             </p>
 
+            ${
+              kombiWunschKursLabel
+                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und diesen Kurs zusätzlich zu buchen. Ich prüfe das und melde mich mit dem Kombipreis bei dir – der oben genannte Preis von ${kurs.preis} € gilt bis dahin nur vorläufig.</p>`
+                : ""
+            }
+
             <p style="margin:0 0 24px;">💕 Solltest du Fragen haben, melde dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für dein Vertrauen 💕</p>
 
             <p style="margin:0;">Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
@@ -333,6 +356,10 @@ export default async (req) => {
         zeile("Notfallkontakt Telefon", `<a href="tel:${escapeHtml(zusatz.notfallTel || "")}">${escapeHtml(zusatz.notfallTel || "")}</a>`);
     }
 
+    const kombiWunschWarnungHtml = kombiWunschKursLabel
+      ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:1px solid #e8c97a;border-radius:6px;font-size:13px;color:#6b5a1e;">⚠️ Kombi-Preis gewünscht: gibt an, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und bittet um den Kombipreis. Bitte prüfen und Preis manuell mitteilen.</div>`
+      : "";
+
     const adminHtml = `
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:white;border:1px solid #eee;">
         <div style="padding:20px 20px 0 20px;">
@@ -342,6 +369,7 @@ export default async (req) => {
           </div>
           <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer</h2>
         </div>
+        ${kombiWunschWarnungHtml}
         <table style="width:100%;padding:0 20px;border-collapse:collapse;">
           ${zeile("Was", `${formatDatumKurz(kurs.start_datum)} ${escapeHtml(kursBezeichnung)}`)}
           ${zeile("Wann", wannText)}
@@ -391,7 +419,7 @@ export default async (req) => {
     await sendResend({
       from: FROM,
       to: ADMIN_EMAIL,
-      subject: `${buchung.vorname} ${buchung.nachname} Kurstermin ${kursBezeichnung}`,
+      subject: `${kombiWunschKursLabel ? "⚠️ Kombipreis-Wunsch: " : ""}${buchung.vorname} ${buchung.nachname} Kurstermin ${kursBezeichnung}`,
       html: adminHtml,
       attachments,
     });

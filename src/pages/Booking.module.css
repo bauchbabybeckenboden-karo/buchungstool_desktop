@@ -218,7 +218,8 @@
   font-weight: 600;
 }
 
-.group input {
+.group input,
+.group select {
   padding: 12px 14px;
   border: 1px solid var(--color-accent);
   background: white;

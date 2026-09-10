@@ -263,6 +263,33 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
           aber für alle Frauen offen, die sich mit ihrer Körpermitte beschäftigen mögen – ganz egal ob
           Mutter oder Alter.
         </div>
+        <div className={styles.checkboxGroup}>
+          <input
+            type="checkbox"
+            id="kombiWunsch"
+            checked={values.kombiWunsch || false}
+            onChange={(e) => onChange('kombiWunsch', e.target.checked)}
+          />
+          <label htmlFor="kombiWunsch">
+            Ich bin bereits bei einem laufenden Kurs angemeldet und buche diesen hier zusätzlich – bitte teilt mir den Kombipreis mit
+          </label>
+        </div>
+        {values.kombiWunsch && (
+          <div className={`${styles.row} ${styles.rowFull}`}>
+            <div className={styles.group}>
+              <label>Bei welchem Kurs bist du bereits angemeldet? *</label>
+              <select
+                required
+                value={values.kombiWunschKurs || ''}
+                onChange={(e) => onChange('kombiWunschKurs', e.target.value)}
+              >
+                <option value="">— bitte auswählen —</option>
+                <option value="somatic-yoga">Soyo Donnerstags</option>
+                <option value="mamafit">Mamafit</option>
+              </select>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
