@@ -698,17 +698,23 @@ export default function Booking() {
                   )
                 )}
                 <span className={styles.price}>
-                  €{effektivPreisKurs}
-                  {rabattiertKurs && (
-                    <span className={styles.termineText}>{' '}statt €{selectedCourse.preis}</span>
-                  )}
-                  {rabattiertKurs && selectedCourse.rabatt_hinweis && (
-                    <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
-                  )}
-                  {effektivPreisKurs < grundpreisKurs && (
-                    <span className={styles.termineText}>
-                      {' '}– Preis passt sich der Anzahl verbleibender Stunden an
-                    </span>
+                  {zeigeKombiWunsch ? (
+                    'Preis siehe Anmeldung'
+                  ) : (
+                    <>
+                      €{effektivPreisKurs}
+                      {rabattiertKurs && (
+                        <span className={styles.termineText}>{' '}statt €{selectedCourse.preis}</span>
+                      )}
+                      {rabattiertKurs && selectedCourse.rabatt_hinweis && (
+                        <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
+                      )}
+                      {effektivPreisKurs < grundpreisKurs && (
+                        <span className={styles.termineText}>
+                          {' '}– Preis passt sich der Anzahl verbleibender Stunden an
+                        </span>
+                      )}
+                    </>
                   )}
                 </span>
               </>
