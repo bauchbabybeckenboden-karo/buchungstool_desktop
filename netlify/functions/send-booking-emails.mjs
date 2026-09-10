@@ -264,12 +264,15 @@ export default async (req) => {
     const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
 
     // Körpermitte & Beckenboden: "Ich buche zusätzlich zu einem laufenden Kurs,
-    // bitte Kombipreis mitteilen" - Wunsch wird nur erfasst, der Kombipreis
-    // wird bewusst NICHT automatisch berechnet (echtes Geld, muss erst
-    // geprüft werden, ob die Person tatsächlich im anderen Kurs angemeldet
-    // ist). Teilnehmerin bekommt eine Ankündigung, Karo eine auffällige
-    // Erinnerung in ihrer Mail.
+    // bitte Kombipreis mitteilen" - der voraussichtliche Kombipreis wird im
+    // Buchungstool anhand des dafür gepflegten Kombi-Pakets vorausberechnet
+    // (Booking.jsx, kombiPreisGeschaetzt) und hier nur noch mit angezeigt -
+    // final bestätigt wird er trotzdem erst von Karo per Hand, da erst
+    // geprüft werden muss, ob die Person tatsächlich im anderen Kurs
+    // angemeldet ist. Teilnehmerin bekommt eine Ankündigung, Karo eine
+    // auffällige Erinnerung in ihrer Mail.
     const kombiWunschKursLabel = zusatz.kombiWunsch ? KOMBI_WUNSCH_LABELS[zusatz.kombiWunschKurs] || zusatz.kombiWunschKurs : null;
+    const kombiPreisGeschaetzt = zusatz.kombiWunsch && zusatz.kombiPreisGeschaetzt != null ? zusatz.kombiPreisGeschaetzt : null;
 
     const uhrzeitEnde = addMinutes(kurs.uhrzeit, kurs.dauer_min);
     const wochentagLang = kurs.start_datum ? WOCHENTAGE[new Date(kurs.start_datum + "T00:00:00").getDay()] : "";
@@ -324,7 +327,11 @@ export default async (req) => {
 
             ${
               kombiWunschKursLabel
-                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und diesen Kurs zusätzlich zu buchen. Ich prüfe das und melde mich mit dem Kombipreis bei dir – der oben genannte Preis von ${kurs.preis} € gilt bis dahin nur vorläufig.</p>`
+                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
+                    kombiPreisGeschaetzt != null
+                      ? `Euer voraussichtlicher Kombipreis für beide Kurse zusammen liegt bei <strong>${kombiPreisGeschaetzt} €</strong> (der oben genannte Einzelpreis von ${kurs.preis} € gilt bis zur Bestätigung nur vorläufig).`
+                      : `Ich prüfe das und melde mich mit dem Kombipreis bei dir – der oben genannte Preis von ${kurs.preis} € gilt bis dahin nur vorläufig.`
+                  } Ich bestätige dir das nach Prüfung deiner Anmeldung final.</p>`
                 : ""
             }
 
@@ -357,7 +364,11 @@ export default async (req) => {
     }
 
     const kombiWunschWarnungHtml = kombiWunschKursLabel
-      ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:1px solid #e8c97a;border-radius:6px;font-size:13px;color:#6b5a1e;">⚠️ Kombi-Preis gewünscht: gibt an, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und bittet um den Kombipreis. Bitte prüfen und Preis manuell mitteilen.</div>`
+      ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:1px solid #e8c97a;border-radius:6px;font-size:13px;color:#6b5a1e;">⚠️ Kombi-Preis gewünscht: gibt an, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und bittet um den Kombipreis.${
+          kombiPreisGeschaetzt != null
+            ? ` Errechneter Kombipreis (aus dem hinterlegten Kombi-Paket): <strong>${kombiPreisGeschaetzt} €</strong>.`
+            : " Kein passendes Kombi-Paket gefunden – Preis muss komplett manuell ermittelt werden."
+        } Bitte prüfen (tatsächlich im anderen Kurs angemeldet?) und final bestätigen.</div>`
       : "";
 
     const adminHtml = `

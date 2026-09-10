@@ -12,11 +12,16 @@ import {
 } from '../importParser.js'
 import { calculatePreis } from '../pricing.js'
 
+const OHNE_TERMIN = 'Ohne Termin'
+const KURSART_REIHENFOLGE = COURSE_TYPES.map((t) => t.slug)
+
 export default function ImportPanel({ onImported }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [rows, setRows] = useState([]) // { key, gruppe, form }
+  // Manuelle Auf-/Zuklapp-Entscheidungen pro Jahr-Karteikarte, siehe Admin.jsx.
+  const [jahrOverrides, setJahrOverrides] = useState({})
 
   useEffect(() => {
     if (open) loadCandidates()
@@ -128,6 +133,21 @@ export default function ImportPanel({ onImported }) {
         })
       })
 
+    // Nach Kursart (Reihenfolge wie in courseTypes.js/den Tabs im Adminbereich)
+    // und innerhalb einer Kursart chronologisch sortieren - bei weit im Voraus
+    // geplanten Kursabfrage-Gruppen sonst eine unübersichtliche, zufällig
+    // geordnete Liste. Die Sortierung wird einmalig beim Laden festgelegt,
+    // damit eine Zeile beim nachträglichen Ändern der Kursart (Dropdown)
+    // nicht plötzlich mitten in der Bearbeitung springt.
+    candidates.sort((a, b) => {
+      const ia = KURSART_REIHENFOLGE.indexOf(a.form.course_type)
+      const ib = KURSART_REIHENFOLGE.indexOf(b.form.course_type)
+      if (ia !== ib) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+      const da = a.form.start_datum || ''
+      const db = b.form.start_datum || ''
+      return da < db ? -1 : da > db ? 1 : 0
+    })
+
     setRows(candidates)
     setLoading(false)
   }
@@ -186,6 +206,31 @@ export default function ImportPanel({ onImported }) {
     if (onImported) onImported()
   }
 
+  // Karteikarten pro Jahr (Reihenfolge innerhalb bleibt die oben festgelegte
+  // Kursart-/Datums-Sortierung) - bei weit im Voraus geplanten Gruppen ist
+  // per Default nur das nächste anstehende Jahr aufgeklappt.
+  const jahresGruppen = new Map()
+  rows.forEach((row) => {
+    const jahr = row.form.start_datum ? row.form.start_datum.slice(0, 4) : OHNE_TERMIN
+    if (!jahresGruppen.has(jahr)) jahresGruppen.set(jahr, [])
+    jahresGruppen.get(jahr).push(row)
+  })
+  const jahre = [...jahresGruppen.keys()].sort((a, b) => {
+    if (a === OHNE_TERMIN) return 1
+    if (b === OHNE_TERMIN) return -1
+    return a.localeCompare(b)
+  })
+  const heuteJahr = String(new Date().getFullYear())
+  const naechstesJahrMitKursen = jahre.find((j) => j !== OHNE_TERMIN && j >= heuteJahr) || jahre[0]
+
+  function istJahrOffen(jahr) {
+    return jahr in jahrOverrides ? jahrOverrides[jahr] : jahr === naechstesJahrMitKursen
+  }
+
+  function toggleJahr(jahr) {
+    setJahrOverrides((prev) => ({ ...prev, [jahr]: !istJahrOffen(jahr) }))
+  }
+
   return (
     <div className={styles.panel}>
       <button className={styles.toggle} onClick={() => setOpen((v) => !v)}>
@@ -206,7 +251,16 @@ export default function ImportPanel({ onImported }) {
             <p className={styles.hint}>Keine neuen Gruppen zum Importieren gefunden.</p>
           )}
 
-          {rows.map((row) => (
+          {jahre.map((jahr) => {
+            const rowsDesJahres = jahresGruppen.get(jahr)
+            const offen = istJahrOffen(jahr)
+            return (
+              <div className={styles.jahrGruppe} key={jahr}>
+                <button type="button" className={styles.jahrHeader} onClick={() => toggleJahr(jahr)}>
+                  <span className={styles.jahrPfeil}>{offen ? '▾' : '▸'}</span>
+                  {jahr} <span className={styles.jahrAnzahl}>({rowsDesJahres.length})</span>
+                </button>
+                {offen && rowsDesJahres.map((row) => (
             <div className={styles.card} key={row.key}>
               <div className={styles.original}>
                 <strong>Aus Kursabfrage:</strong> {row.gruppe.name}
@@ -319,7 +373,10 @@ export default function ImportPanel({ onImported }) {
                 Als Kurs übernehmen
               </button>
             </div>
-          ))}
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
