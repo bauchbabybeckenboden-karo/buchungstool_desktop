@@ -177,7 +177,7 @@ export default async (req) => {
               <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
             </div>
             <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
-              <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zum Kombi-Paket <strong style="font-weight:600;">${escapeHtml(name)}</strong>!</p>
+              <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zum Kurs-Paket <strong style="font-weight:600;">${escapeHtml(name)}</strong>!</p>
 
               <hr style="border:none;border-top:1px solid #ece1da;margin:24px 0;"/>
 
@@ -249,7 +249,7 @@ export default async (req) => {
               <span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0d9d9;"></span>
               <strong style="font-size:15px;">Bauch Baby Beckenboden</strong>
             </div>
-            <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer (Kombi-Paket)</h2>
+            <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer (Kurs-Paket)</h2>
           </div>
           <table style="width:100%;padding:0 20px;border-collapse:collapse;">
             ${zeile("Paket", escapeHtml(name))}
@@ -301,7 +301,7 @@ export default async (req) => {
       await sendResend({
         from: FROM,
         to: ADMIN_EMAIL,
-        subject: `${buchung.vorname} ${buchung.nachname} Kombi-Paket ${name}`,
+        subject: `${buchung.vorname} ${buchung.nachname} Kurs-Paket ${name}`,
         html: adminHtml,
         attachments,
       });

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { reduzierterPreis, effektiverGrundpreis } from '../pricing.js'
+import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine } from '../pricing.js'
 
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
@@ -59,6 +59,11 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   // z.B. Online-Termine (Karo benennt diese selbst entsprechend, etwa
   // "Mamafit Online") für Teilnehmerinnen auch auf der Kachel erkennbar sind -
   // ohne ein zusätzliches, separates "ONLINE"-Badge auf der Liste.
+  // "Quereinstieg": Kurse, die schon laufen (mind. ein Termin bereits
+  // stattgefunden), aber noch buchbar sind, werden direkt in der ersten
+  // Zeile neben dem Namen entsprechend beschriftet - so ist auf einen Blick
+  // klar, dass man hier später einsteigt statt von Anfang an dabei zu sein.
+  const bereitsGestartet = vergangeneTermine(course) > 0
   const beschriftung = label ? `${label} · ${course.name}` : course.name
 
   let titelText
@@ -103,13 +108,23 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
     >
       <i className={`ti ti-calendar ${styles.termineIcon}`} />
       <div className={styles.termineTextGroup}>
-        <p className={styles.termineLabel}>{beschriftung}</p>
+        <p className={styles.termineLabel}>
+          {beschriftung}
+          {bereitsGestartet && ' · Quereinstieg'}
+        </p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         <p className={styles.termineText}>
-          {course.termine} Termine · {effektivPreis}€
-          {rabattiert && ` statt ${course.preis}€`}
-          {rabattiert && course.rabatt_hinweis && ` (rabattiert ${course.rabatt_hinweis})`}
-          {spaeterReduziert && ' – Preis passt sich der Anzahl verbleibender Stunden an'}
+          {course.termine} Termine ·{' '}
+          {comboLabel ? (
+            'Preis siehe Anmeldung'
+          ) : (
+            <>
+              {effektivPreis}€
+              {rabattiert && ` statt ${course.preis}€`}
+              {rabattiert && course.rabatt_hinweis && ` (rabattiert ${course.rabatt_hinweis})`}
+              {spaeterReduziert && ' – Preis passt sich der Anzahl verbleibender Stunden an'}
+            </>
+          )}
         </p>
         {terminliste && <p className={styles.termineDatesLine}>📍 {terminliste}</p>}
       </div>
@@ -160,7 +175,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
     >
       <i className={`ti ti-box ${styles.termineIcon}`} />
       <div className={styles.termineTextGroup}>
-        <p className={styles.termineLabel}>Kombi-Paket</p>
+        <p className={styles.termineLabel}>Kurs-Paket</p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         {kursZeile(paket.kurs1)}
         {kursZeile(paket.kurs2)}
@@ -295,9 +310,9 @@ function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis })
       </div>
       {values.kombiWunsch && (
         <div className={styles.infoBox}>
-          Dein Preis für diesen Zusatzkurs: <strong>{kombiWunschPreis}€</strong> statt {normalPreis}€ (10 % Rabatt
-          auf Zusatzbuchungen). Wir prüfen kurz, ob du wirklich schon im angegebenen Kurs angemeldet bist, und
-          geben dir danach Bescheid – bitte überweise erst, wenn wir uns gemeldet haben.
+          Wie schön! 💕 Der Preis für den zusätzlichen Kurs ist <strong>{kombiWunschPreis}€</strong> (10 % Rabatt
+          auf den Originalpreis). Warte mit der Überweisung bitte auf meine Bestätigungsmail. 🌿 Vielen Dank, dass
+          Du dabei bist!
         </div>
       )}
     </div>

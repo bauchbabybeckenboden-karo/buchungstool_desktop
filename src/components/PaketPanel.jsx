@@ -187,7 +187,7 @@ export default function PaketPanel() {
 
   async function loeschen(paket) {
     const bestaetigt = window.confirm(
-      `Kombi-Paket "${paket.name}" wirklich löschen? Bereits erfolgte Anmeldungen bleiben in den jeweiligen Einzelkursen erhalten, nur das Paket selbst verschwindet aus der Website-Auswahl.`
+      `Kurs-Paket "${paket.name}" wirklich löschen? Bereits erfolgte Anmeldungen bleiben in den jeweiligen Einzelkursen erhalten, nur das Paket selbst verschwindet aus der Website-Auswahl.`
     )
     if (!bestaetigt) return
 
@@ -205,13 +205,13 @@ export default function PaketPanel() {
   return (
     <div className={styles.panel}>
       <button className={styles.toggle} onClick={() => setOpen((v) => !v)}>
-        {open ? 'Kombi-Pakete ausblenden' : 'Kombi-Pakete verwalten'}
+        {open ? 'Kurs-Pakete ausblenden' : 'Kurs-Pakete verwalten'}
       </button>
 
       {open && (
         <div className={styles.content}>
           <p className={styles.hint}>
-            Ein Kombi-Paket bündelt zwei eigenständige Kurse zu einer gemeinsamen Buchung — die Teilnehmerin
+            Ein Kurs-Paket bündelt zwei eigenständige Kurse zu einer gemeinsamen Buchung — die Teilnehmerin
             meldet sich einmal an, zahlt einen gemeinsamen Preis und landet automatisch in beiden Kursen als
             Teilnehmerin (inkl. einer gemeinsamen Bestätigungsmail für beide Termine). Der Paketpreis wird
             automatisch mit 10–11% Rabatt (in 5€-Schritten) auf die Summe der beiden Einzelpreise
@@ -335,7 +335,7 @@ export default function PaketPanel() {
           )}
 
           <div className={styles.card}>
-            <strong>Neues Kombi-Paket</strong>
+            <strong>Neues Kurs-Paket</strong>
             <div className={styles.fields}>
               <div>
                 <label>Kurs 1</label>
@@ -395,7 +395,7 @@ export default function PaketPanel() {
             </label>
 
             <button type="button" className={styles.importButton} onClick={erstellen}>
-              Kombi-Paket erstellen
+              Kurs-Paket erstellen
             </button>
           </div>
         </div>
