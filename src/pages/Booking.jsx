@@ -468,11 +468,19 @@ export default function Booking() {
   // ist, passiert serverseitig beim Mailversand (send-booking-emails.mjs).
   const kombiWunschPreis = zeigeKombiWunsch ? Math.ceil(effektivPreisKurs * 0.9) : null
 
+  // Online-Kurse sollen in jeder Liste immer ganz unten stehen, hinter den
+  // Präsenzterminen - Array.sort ist stabil, die sonstige Reihenfolge (nach
+  // created_at aus der Datenbank-Abfrage) bleibt innerhalb der beiden
+  // Gruppen (online/nicht online) also unverändert erhalten.
+  function onlineZuletzt(a, b) {
+    return (a.ist_online ? 1 : 0) - (b.ist_online ? 1 : 0)
+  }
+
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
-  const primaerKurse = courses.filter((c) => c.course_type === courseTypeSlug)
-  const komboKurse = courses.filter((c) => c.course_type !== courseTypeSlug)
+  const primaerKurse = courses.filter((c) => c.course_type === courseTypeSlug).sort(onlineZuletzt)
+  const komboKurse = courses.filter((c) => c.course_type !== courseTypeSlug).sort(onlineZuletzt)
 
   function spotsLeftFuer(course) {
     if (!course.max_teilnehmerinnen) return null

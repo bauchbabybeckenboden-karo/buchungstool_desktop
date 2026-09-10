@@ -87,7 +87,12 @@ export default function Admin() {
   const activeTypeConfig = COURSE_TYPES.find((t) => t.slug === activeType)
 
   // Kurse chronologisch sortieren und in Karteikarten pro Jahr gruppieren.
+  // Online-Kurse stehen dabei innerhalb ihres Jahres immer ganz unten, hinter
+  // den Präsenzterminen.
   const coursesSortiert = [...coursesForActiveType].sort((a, b) => {
+    const aOnline = a.ist_online ? 1 : 0
+    const bOnline = b.ist_online ? 1 : 0
+    if (aOnline !== bOnline) return aOnline - bOnline
     const da = kursSortDatum(a)
     const db = kursSortDatum(b)
     if (!da && !db) return 0
