@@ -6,8 +6,8 @@ import { COURSE_TYPES } from '../courseTypes.js'
 const BESCHREIBUNGEN = {
   mamafit: 'Ganzkörperworkout nach der Geburt (ab der 10. Woche)',
   schwangerfit: 'Fitness in der Schwangerschaft',
-  'somatic-yoga': 'Sanftes, körperorientiertes Yoga',
-  'koerpermitte-beckenboden': 'Rumpfstabilität & Beckenbodentraining',
+  'somatic-yoga': 'Körperorientierter, Trauma-informierter Kurs',
+  'koerpermitte-beckenboden': 'Achtsames Training für Frauen jeden Alters',
 }
 
 // Allgemeine Übersichtsseite über alle Kursarten - gedacht zum Einbetten auf
