@@ -4,7 +4,7 @@ import styles from './Booking.module.css'
 import { COURSE_TYPES } from '../courseTypes.js'
 
 const BESCHREIBUNGEN = {
-  mamafit: 'Rückbildung & Fitness nach der Geburt',
+  mamafit: 'Ganzkörperworkout nach der Geburt (ab der 10. Woche)',
   schwangerfit: 'Fitness in der Schwangerschaft',
   'somatic-yoga': 'Sanftes, körperorientiertes Yoga',
   'koerpermitte-beckenboden': 'Rumpfstabilität & Beckenbodentraining',
