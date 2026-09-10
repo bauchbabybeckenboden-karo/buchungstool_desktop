@@ -304,8 +304,8 @@ function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis })
           onChange={(e) => onChange('kombiWunsch', e.target.checked)}
         />
         <label htmlFor="kombiWunsch">
-          Ich bin bereits bei einem laufenden Kurs (Soyo Donnerstags oder Mamafit) angemeldet und buche diesen
-          Kurs zusätzlich dazu.
+          Ich bin bereits bei einem <strong>laufenden</strong> Kurs (Soyo Donnerstags/Mamafit) angemeldet & buche
+          diesen Kurs zusätzlich.
         </label>
       </div>
       {values.kombiWunsch && (
