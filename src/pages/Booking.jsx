@@ -277,7 +277,7 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
 // "Deine Angaben") statt versteckt in den kursart-spezifischen Feldern, damit
 // sofort klar ist, dass es hier um eine Zusatzbuchung zu einem bereits
 // laufenden Kurs geht.
-function KombiWunschSection({ values, onChange, kombiPreisInfo }) {
+function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis }) {
   return (
     <div className={styles.section}>
       <h3>Zusätzliche Buchung zum bereits laufenden Kurs</h3>
@@ -289,30 +289,15 @@ function KombiWunschSection({ values, onChange, kombiPreisInfo }) {
           onChange={(e) => onChange('kombiWunsch', e.target.checked)}
         />
         <label htmlFor="kombiWunsch">
-          Ich bin bereits bei einem laufenden Kurs angemeldet und buche diesen hier zusätzlich – bitte teilt mir den Kombipreis mit
+          Ich bin bereits bei einem laufenden Kurs (Soyo Donnerstags oder Mamafit) angemeldet und buche diesen
+          Kurs zusätzlich dazu.
         </label>
       </div>
       {values.kombiWunsch && (
-        <div className={`${styles.row} ${styles.rowFull}`}>
-          <div className={styles.group}>
-            <label>Bei welchem Kurs bist du bereits angemeldet? *</label>
-            <select
-              required
-              value={values.kombiWunschKurs || ''}
-              onChange={(e) => onChange('kombiWunschKurs', e.target.value)}
-            >
-              <option value="">— bitte auswählen —</option>
-              <option value="somatic-yoga">Soyo Donnerstags</option>
-              <option value="mamafit">Mamafit</option>
-            </select>
-          </div>
-        </div>
-      )}
-      {values.kombiWunsch && values.kombiWunschKurs && (
         <div className={styles.infoBox}>
-          {kombiPreisInfo
-            ? `Voraussichtlicher Kombipreis: ${kombiPreisInfo.preis}€ für beide Kurse zusammen (wird von uns nach Prüfung deiner Anmeldung final bestätigt).`
-            : 'Wir berechnen deinen persönlichen Kombipreis und melden uns nach der Anmeldung bei dir.'}
+          Dein Preis für diesen Zusatzkurs: <strong>{kombiWunschPreis}€</strong> statt {normalPreis}€ (10 % Rabatt
+          auf Zusatzbuchungen). Wir prüfen kurz, ob du wirklich schon im angegebenen Kurs angemeldet bist, und
+          geben dir danach Bescheid – bitte überweise erst, wenn wir uns gemeldet haben.
         </div>
       )}
     </div>
@@ -340,7 +325,6 @@ export default function Booking() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
-  const [kombiPreisInfo, setKombiPreisInfo] = useState(null)
 
   // Meldet die tatsächliche Seitenhöhe an ein einbettendes iFrame auf der
   // Homepage, damit dieses sich automatisch anpasst (die Buchungsseite
@@ -443,49 +427,6 @@ export default function Booking() {
   const selectedCourse = courses.find((c) => c.id === selectedId)
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
 
-  // Voraussichtlicher Kombipreis für die "Kombi-Wunsch"-Option (siehe
-  // ExtraFields, koerpermitte-beckenboden): sobald die Box angehakt und ein
-  // Kurs ausgewählt ist, bei dem die Teilnehmerin bereits angemeldet ist,
-  // wird das dafür bereits gepflegte Kombi-Paket (dieselben Preise wie bei
-  // einer regulären Kombi-Paket-Buchung) gesucht und dessen Preis angezeigt.
-  // WICHTIG: dabei bewusst der reguläre Paketpreis (paket.preis), NICHT ein
-  // ggf. per "Rabatt aktiv" reduzierter Einzelkurspreis - sonst würde der
-  // Kombi-Paket-Rabatt zusätzlich auf einen bereits rabattierten Kurs
-  // gerechnet ("Doppelrabatt").
-  useEffect(() => {
-    if (!extra.kombiWunsch || !extra.kombiWunschKurs || !selectedCourse) {
-      setKombiPreisInfo(null)
-      return
-    }
-    let active = true
-    supabase
-      .from('kurs_pakete')
-      .select('*')
-      .eq('sichtbar_auf_website', true)
-      .then(async ({ data: paketeData, error }) => {
-        if (!active || error || !paketeData || paketeData.length === 0) {
-          if (active) setKombiPreisInfo(null)
-          return
-        }
-        const kursIds = [...new Set(paketeData.flatMap((p) => [p.kurs_id_1, p.kurs_id_2]))]
-        const { data: kurseData } = await supabase.from('kurse').select('*').in('id', kursIds)
-        if (!active) return
-        const kursMap = {}
-        ;(kurseData || []).forEach((k) => { kursMap[k.id] = k })
-        const passend = paketeData
-          .map((p) => ({ ...p, kurs1: kursMap[p.kurs_id_1], kurs2: kursMap[p.kurs_id_2] }))
-          .find((p) => {
-            if (!p.kurs1 || !p.kurs2) return false
-            const typen = [p.kurs1.course_type, p.kurs2.course_type]
-            return typen.includes(selectedCourse.course_type) && typen.includes(extra.kombiWunschKurs)
-          })
-        setKombiPreisInfo(
-          passend ? { preis: reduzierterPreis(passend.preis, passend.kurs1, passend.kurs2) } : null
-        )
-      })
-    return () => { active = false }
-  }, [extra.kombiWunsch, extra.kombiWunschKurs, selectedCourse])
-
   // Effektiver (ggf. rabattierter und/oder reduzierter) Preis für die aktuelle
   // Auswahl - wird für Anzeige UND die verschickte Bestätigungsmail verwendet,
   // damit beide übereinstimmen (siehe pricing.js: effektiverGrundpreis,
@@ -502,6 +443,15 @@ export default function Booking() {
   // Donnerstags-Seite) - nur dann macht die Kombi-Wunsch-Option Sinn (siehe
   // KombiWunschSection oben).
   const zeigeKombiWunsch = Boolean(selectedCourse) && selectedCourse.course_type !== courseTypeSlug
+
+  // Kombi-Wunsch-Preis: pauschal 10% auf den ohnehin angezeigten Preis des
+  // PLUS-Kurses, aufgerundet auf den vollen Euro - NICHT auf den bereits
+  // laufenden Kurs, den bekommt die Teilnehmerin ja schon zum normalen Preis.
+  // Anders als beim "echten" Kombi-Paket (zwei gleichzeitig gebuchte Kurse)
+  // ist hier sofort ein fester Preis bekannt, ohne Datenbank-Abfrage - die
+  // Bestätigung, ob die Teilnehmerin tatsächlich im anderen Kurs angemeldet
+  // ist, passiert serverseitig beim Mailversand (send-booking-emails.mjs).
+  const kombiWunschPreis = zeigeKombiWunsch ? Math.ceil(effektivPreisKurs * 0.9) : null
 
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
@@ -572,7 +522,7 @@ export default function Booking() {
       ort: general.ort,
       dsgvo_akzeptiert: general.dsgvo,
       antirassismus_akzeptiert: general.antirassismus,
-      zusatzfelder: extra.kombiWunsch ? { ...extra, kombiPreisGeschaetzt: kombiPreisInfo?.preis ?? null } : extra,
+      zusatzfelder: extra.kombiWunsch ? { ...extra, kombiPreisGeschaetzt: kombiWunschPreis ?? null } : extra,
     }
 
     // Ein Kombi-Paket erzeugt EINE Anmeldung, landet aber technisch als
@@ -755,7 +705,8 @@ export default function Booking() {
               <KombiWunschSection
                 values={extra}
                 onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-                kombiPreisInfo={kombiPreisInfo}
+                kombiWunschPreis={kombiWunschPreis}
+                normalPreis={effektivPreisKurs}
               />
             )}
 

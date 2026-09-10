@@ -2,9 +2,21 @@
 // 1. Bestätigung an die Teilnehmerin
 // 2. Benachrichtigung an Karo (im Setmore-"Neuer Teilnehmer"-Stil) inkl. Visitenkarte(n) zum Abspeichern
 
+import { createClient } from "@supabase/supabase-js";
+
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM = "Bauch Baby Beckenboden <kontakt@bauch-baby-beckenboden.com>";
 const ADMIN_EMAIL = "kontakt@bauch-baby-beckenboden.com";
+
+// Für den Kombi-Wunsch-Namensabgleich (siehe findeBereitsAngemeldet unten)
+// braucht es Lesezugriff auf "buchungen" - der öffentliche anon-Key darf das
+// aus Datenschutzgründen nicht (siehe Booking.jsx). Deshalb hier bewusst der
+// SUPABASE_SERVICE_ROLE_KEY, der NUR als Netlify-Umgebungsvariable existiert
+// und niemals ins Frontend/den Browser gelangt (anders als die VITE_*-Werte).
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseAdmin =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
 
 // Feste Angaben für die Bestätigungsmail (aktuell für alle Kurse gleich).
 const BANK = {
@@ -21,14 +33,52 @@ const COURSE_TYPE_LABELS = {
   "koerpermitte-beckenboden": "Körpermitte & Beckenboden",
 };
 
-// Label für den in der Kombi-Wunsch-Auswahl (Körpermitte & Beckenboden)
-// angegebenen "bereits laufenden" Kurs - unabhängig von COURSE_TYPE_LABELS,
-// weil hier konkret der jeweilige Wochentags-Kurs gemeint ist, nicht die
-// ganze Kursart.
-const KOMBI_WUNSCH_LABELS = {
-  "somatic-yoga": "Soyo Donnerstags",
-  mamafit: "Mamafit",
-};
+// Kursarten, mit denen sich "Körpermitte & Beckenboden" kombinieren lässt
+// (siehe Booking.jsx, KombiWunschSection) - nur dort wird beim Kombi-Wunsch
+// nach einem Namens-Treffer gesucht.
+const KOMBI_PARTNER_COURSE_TYPES = ["somatic-yoga", "mamafit"];
+
+// Prüft per Namensabgleich (Vor- + Nachname, ohne Groß-/Kleinschreibung und
+// führende/folgende Leerzeichen), ob bereits eine Buchung in einem der beiden
+// Kombi-Partnerkurse existiert - das ist die einzige Grundlage, auf der der
+// "Kombi-Wunsch" automatisch bestätigt wird (statt dass Karo jede Anfrage von
+// Hand mit ihren Kurslisten abgleichen muss). Ein Treffer wird bewusst nur
+// bei exakter Namensübereinstimmung gewertet - Tippfehler/Spitznamen führen
+// zu "nicht gefunden" und damit zur manuellen Prüfung durch Karo, nie zu
+// einer fälschlich automatisch bestätigten Buchung.
+async function findeBereitsAngemeldet(vorname, nachname) {
+  if (!supabaseAdmin) return { geprueft: false, gefunden: false, kursLabel: null };
+
+  const vornameTrim = (vorname || "").trim();
+  const nachnameTrim = (nachname || "").trim();
+  if (!vornameTrim || !nachnameTrim) return { geprueft: true, gefunden: false, kursLabel: null };
+
+  const { data: kurse, error: kurseError } = await supabaseAdmin
+    .from("kurse")
+    .select("id, course_type")
+    .in("course_type", KOMBI_PARTNER_COURSE_TYPES);
+  if (kurseError || !kurse || kurse.length === 0) return { geprueft: true, gefunden: false, kursLabel: null };
+
+  const kursIds = kurse.map((k) => k.id);
+  const { data: treffer, error: buchungenError } = await supabaseAdmin
+    .from("buchungen")
+    .select("kurs_id")
+    .in("kurs_id", kursIds)
+    .ilike("vorname", vornameTrim)
+    .ilike("nachname", nachnameTrim)
+    .limit(1);
+  if (buchungenError) return { geprueft: true, gefunden: false, kursLabel: null };
+
+  const passenderTreffer = (treffer || [])[0];
+  if (!passenderTreffer) return { geprueft: true, gefunden: false, kursLabel: null };
+
+  const passenderKurs = kurse.find((k) => k.id === passenderTreffer.kurs_id);
+  return {
+    geprueft: true,
+    gefunden: true,
+    kursLabel: passenderKurs ? COURSE_TYPE_LABELS[passenderKurs.course_type] || passenderKurs.course_type : null,
+  };
+}
 
 const WOCHENTAGE = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const WOCHENTAGE_KURZ = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
@@ -263,16 +313,16 @@ export default async (req) => {
     const kursBezeichnung = `${courseTypeLabel} ${kurs.termine} Termine`;
     const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
 
-    // Körpermitte & Beckenboden: "Ich buche zusätzlich zu einem laufenden Kurs,
-    // bitte Kombipreis mitteilen" - der voraussichtliche Kombipreis wird im
-    // Buchungstool anhand des dafür gepflegten Kombi-Pakets vorausberechnet
-    // (Booking.jsx, kombiPreisGeschaetzt) und hier nur noch mit angezeigt -
-    // final bestätigt wird er trotzdem erst von Karo per Hand, da erst
-    // geprüft werden muss, ob die Person tatsächlich im anderen Kurs
-    // angemeldet ist. Teilnehmerin bekommt eine Ankündigung, Karo eine
-    // auffällige Erinnerung in ihrer Mail.
-    const kombiWunschKursLabel = zusatz.kombiWunsch ? KOMBI_WUNSCH_LABELS[zusatz.kombiWunschKurs] || zusatz.kombiWunschKurs : null;
+    // Körpermitte & Beckenboden: "Ich buche zusätzlich zu einem laufenden Kurs"
+    // - der Preis (10% Rabatt auf den Zusatzkurs) wird im Buchungstool bereits
+    // fest berechnet (Booking.jsx, kombiPreisGeschaetzt). Automatisch ENDGÜLTIG
+    // bestätigt wird er nur, wenn sich der Name in einer bestehenden Buchung
+    // von Soyo Donnerstags oder Mamafit findet (findeBereitsAngemeldet) - sonst
+    // bleibt es vorläufig und Karo bekommt eine auffällige Erinnerung.
     const kombiPreisGeschaetzt = zusatz.kombiWunsch && zusatz.kombiPreisGeschaetzt != null ? zusatz.kombiPreisGeschaetzt : null;
+    const kombiCheck = zusatz.kombiWunsch
+      ? await findeBereitsAngemeldet(buchung.vorname, buchung.nachname)
+      : null;
 
     const uhrzeitEnde = addMinutes(kurs.uhrzeit, kurs.dauer_min);
     const wochentagLang = kurs.start_datum ? WOCHENTAGE[new Date(kurs.start_datum + "T00:00:00").getDay()] : "";
@@ -326,12 +376,12 @@ export default async (req) => {
             </p>
 
             ${
-              kombiWunschKursLabel
-                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
-                    kombiPreisGeschaetzt != null
-                      ? `Euer voraussichtlicher Kombipreis für beide Kurse zusammen liegt bei <strong>${kombiPreisGeschaetzt} €</strong> (der oben genannte Einzelpreis von ${kurs.preis} € gilt bis zur Bestätigung nur vorläufig).`
-                      : `Ich prüfe das und melde mich mit dem Kombipreis bei dir – der oben genannte Preis von ${kurs.preis} € gilt bis dahin nur vorläufig.`
-                  } Ich bestätige dir das nach Prüfung deiner Anmeldung final.</p>`
+              zusatz.kombiWunsch
+                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei Soyo Donnerstags oder Mamafit angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
+                    kombiCheck?.gefunden
+                      ? `Ich konnte deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Du kannst direkt überweisen.`
+                      : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Bitte überweise noch nicht, ich melde mich bei dir, sobald ich es geprüft habe.`
+                  }</p>`
                 : ""
             }
 
@@ -363,12 +413,14 @@ export default async (req) => {
         zeile("Notfallkontakt Telefon", `<a href="tel:${escapeHtml(zusatz.notfallTel || "")}">${escapeHtml(zusatz.notfallTel || "")}</a>`);
     }
 
-    const kombiWunschWarnungHtml = kombiWunschKursLabel
-      ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:1px solid #e8c97a;border-radius:6px;font-size:13px;color:#6b5a1e;">⚠️ Kombi-Preis gewünscht: gibt an, bereits bei <strong>${escapeHtml(kombiWunschKursLabel)}</strong> angemeldet zu sein und bittet um den Kombipreis.${
-          kombiPreisGeschaetzt != null
-            ? ` Errechneter Kombipreis (aus dem hinterlegten Kombi-Paket): <strong>${kombiPreisGeschaetzt} €</strong>.`
-            : " Kein passendes Kombi-Paket gefunden – Preis muss komplett manuell ermittelt werden."
-        } Bitte prüfen (tatsächlich im anderen Kurs angemeldet?) und final bestätigen.</div>`
+    // Bei einem automatisch gefundenen Namens-Treffer: ruhige Info, keine
+    // Aktion nötig. Kein Treffer: auffällige Warnung - das ist der einzige
+    // Fall, in dem Karo den Namen noch von Hand mit ihren Kurslisten
+    // abgleichen muss.
+    const kombiWunschInfoHtml = zusatz.kombiWunsch
+      ? kombiCheck?.gefunden
+        ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#e6f2e9;border:1px solid #a9d4b5;border-radius:6px;font-size:13px;color:#2f5c3d;">✅ Kombi-Wunsch automatisch bestätigt: Name wurde in den Buchungen von <strong>${escapeHtml(kombiCheck.kursLabel || "Soyo Donnerstags/Mamafit")}</strong> gefunden. Preis für den Zusatzkurs (10 % Rabatt bereits eingerechnet): <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>. Keine weitere Prüfung nötig, Teilnehmerin wurde bereits informiert.</div>`
+        : `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:2px solid #e05d5d;border-radius:6px;font-size:13px;color:#6b1e1e;">❗ Kombi-Wunsch NICHT automatisch bestätigt: Der Name wurde in keiner Buchung von Soyo Donnerstags oder Mamafit gefunden. Bitte manuell prüfen (Tippfehler? anderer Name? tatsächlich nicht angemeldet?) und der Teilnehmerin Bescheid geben. Vorgesehener Preis: <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>.</div>`
       : "";
 
     const adminHtml = `
@@ -380,7 +432,7 @@ export default async (req) => {
           </div>
           <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer</h2>
         </div>
-        ${kombiWunschWarnungHtml}
+        ${kombiWunschInfoHtml}
         <table style="width:100%;padding:0 20px;border-collapse:collapse;">
           ${zeile("Was", `${formatDatumKurz(kurs.start_datum)} ${escapeHtml(kursBezeichnung)}`)}
           ${zeile("Wann", wannText)}
@@ -430,7 +482,9 @@ export default async (req) => {
     await sendResend({
       from: FROM,
       to: ADMIN_EMAIL,
-      subject: `${kombiWunschKursLabel ? "⚠️ Kombipreis-Wunsch: " : ""}${buchung.vorname} ${buchung.nachname} Kurstermin ${kursBezeichnung}`,
+      subject: `${
+        zusatz.kombiWunsch ? (kombiCheck?.gefunden ? "✅ Kombi-Wunsch bestätigt: " : "❗ Kombi-Wunsch prüfen: ") : ""
+      }${buchung.vorname} ${buchung.nachname} Kurstermin ${kursBezeichnung}`,
       html: adminHtml,
       attachments,
     });
