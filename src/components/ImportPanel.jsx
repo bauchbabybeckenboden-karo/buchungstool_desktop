@@ -16,7 +16,10 @@ const OHNE_TERMIN = 'Ohne Termin'
 const KURSART_REIHENFOLGE = COURSE_TYPES.map((t) => t.slug)
 
 export default function ImportPanel({ onImported }) {
-  const [open, setOpen] = useState(false)
+  // Standardmäßig direkt offen und geladen - Karo will die anstehenden
+  // Kursabfrage-Kandidaten beim Öffnen des Adminbereichs sofort sehen, ohne
+  // jedes Mal erst manuell "Aus Kursabfrage importieren" anklicken zu müssen.
+  const [open, setOpen] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [rows, setRows] = useState([]) // { key, gruppe, form }
