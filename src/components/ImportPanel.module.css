@@ -118,3 +118,36 @@
 .importButton:hover {
   background-color: var(--color-main-dark);
 }
+
+.jahrGruppe {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.jahrHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--color-box);
+  border: none;
+  border-left: 4px solid var(--color-main);
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.jahrPfeil {
+  color: var(--color-main);
+  font-size: 13px;
+}
+
+.jahrAnzahl {
+  font-weight: 400;
+  color: var(--color-muted);
+  font-size: 13px;
+}

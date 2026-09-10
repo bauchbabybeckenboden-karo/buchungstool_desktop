@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { reduzierterPreis, effektiverGrundpreis } from '../pricing.js'
+import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine } from '../pricing.js'
 
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
@@ -59,6 +59,11 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   // z.B. Online-Termine (Karo benennt diese selbst entsprechend, etwa
   // "Mamafit Online") für Teilnehmerinnen auch auf der Kachel erkennbar sind -
   // ohne ein zusätzliches, separates "ONLINE"-Badge auf der Liste.
+  // "Quereinstieg": Kurse, die schon laufen (mind. ein Termin bereits
+  // stattgefunden), aber noch buchbar sind, werden direkt in der ersten
+  // Zeile neben dem Namen entsprechend beschriftet - so ist auf einen Blick
+  // klar, dass man hier später einsteigt statt von Anfang an dabei zu sein.
+  const bereitsGestartet = vergangeneTermine(course) > 0
   const beschriftung = label ? `${label} · ${course.name}` : course.name
 
   let titelText
@@ -103,13 +108,23 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
     >
       <i className={`ti ti-calendar ${styles.termineIcon}`} />
       <div className={styles.termineTextGroup}>
-        <p className={styles.termineLabel}>{beschriftung}</p>
+        <p className={styles.termineLabel}>
+          {beschriftung}
+          {bereitsGestartet && ' · Quereinstieg'}
+        </p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         <p className={styles.termineText}>
-          {course.termine} Termine · {effektivPreis}€
-          {rabattiert && ` statt ${course.preis}€`}
-          {rabattiert && course.rabatt_hinweis && ` (rabattiert ${course.rabatt_hinweis})`}
-          {spaeterReduziert && ' – Preis passt sich der Anzahl verbleibender Stunden an'}
+          {course.termine} Termine ·{' '}
+          {comboLabel ? (
+            'Preis siehe Anmeldung'
+          ) : (
+            <>
+              {effektivPreis}€
+              {rabattiert && ` statt ${course.preis}€`}
+              {rabattiert && course.rabatt_hinweis && ` (rabattiert ${course.rabatt_hinweis})`}
+              {spaeterReduziert && ' – Preis passt sich der Anzahl verbleibender Stunden an'}
+            </>
+          )}
         </p>
         {terminliste && <p className={styles.termineDatesLine}>📍 {terminliste}</p>}
       </div>
@@ -160,7 +175,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
     >
       <i className={`ti ti-box ${styles.termineIcon}`} />
       <div className={styles.termineTextGroup}>
-        <p className={styles.termineLabel}>Kombi-Paket</p>
+        <p className={styles.termineLabel}>Kurs-Paket</p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         {kursZeile(paket.kurs1)}
         {kursZeile(paket.kurs2)}
@@ -263,38 +278,45 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
           aber für alle Frauen offen, die sich mit ihrer Körpermitte beschäftigen mögen – ganz egal ob
           Mutter oder Alter.
         </div>
-        <div className={styles.checkboxGroup}>
-          <input
-            type="checkbox"
-            id="kombiWunsch"
-            checked={values.kombiWunsch || false}
-            onChange={(e) => onChange('kombiWunsch', e.target.checked)}
-          />
-          <label htmlFor="kombiWunsch">
-            Ich bin bereits bei einem laufenden Kurs angemeldet und buche diesen hier zusätzlich – bitte teilt mir den Kombipreis mit
-          </label>
-        </div>
-        {values.kombiWunsch && (
-          <div className={`${styles.row} ${styles.rowFull}`}>
-            <div className={styles.group}>
-              <label>Bei welchem Kurs bist du bereits angemeldet? *</label>
-              <select
-                required
-                value={values.kombiWunschKurs || ''}
-                onChange={(e) => onChange('kombiWunschKurs', e.target.value)}
-              >
-                <option value="">— bitte auswählen —</option>
-                <option value="somatic-yoga">Soyo Donnerstags</option>
-                <option value="mamafit">Mamafit</option>
-              </select>
-            </div>
-          </div>
-        )}
       </div>
     )
   }
 
   return null
+}
+
+// Wird nur angezeigt, wenn ein Kurs auf einer "fremden" Seite (als
+// Kombi-Kurs-Kachel, z.B. "PLUS Körpermitte & Beckenboden" auf der
+// Donnerstags-Seite) ausgewählt wurde - siehe zeigeKombiWunsch in Booking().
+// Bewusst als eigene, klar beschriftete Sektion GANZ OBEN im Formular (vor
+// "Deine Angaben") statt versteckt in den kursart-spezifischen Feldern, damit
+// sofort klar ist, dass es hier um eine Zusatzbuchung zu einem bereits
+// laufenden Kurs geht.
+function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis }) {
+  return (
+    <div className={styles.section}>
+      <h3>Zusätzliche Buchung zum bereits laufenden Kurs</h3>
+      <div className={styles.checkboxGroup}>
+        <input
+          type="checkbox"
+          id="kombiWunsch"
+          checked={values.kombiWunsch || false}
+          onChange={(e) => onChange('kombiWunsch', e.target.checked)}
+        />
+        <label htmlFor="kombiWunsch">
+          Ich bin bereits bei einem <strong>laufenden</strong> Kurs (Soyo Donnerstags/Mamafit) angemeldet & buche
+          diesen Kurs zusätzlich.
+        </label>
+      </div>
+      {values.kombiWunsch && (
+        <div className={styles.infoBox}>
+          Wie schön! 💕 Der Preis für den zusätzlichen Kurs ist <strong>{kombiWunschPreis}€</strong> (10 % Rabatt
+          auf den Originalpreis). Warte mit der Überweisung bitte auf meine Bestätigungsmail. 🌿 Vielen Dank, dass
+          Du dabei bist!
+        </div>
+      )}
+    </div>
+  )
 }
 
 const initialGeneral = {
@@ -431,11 +453,34 @@ export default function Booking() {
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
     : null
 
+  // Der ausgewählte Kurs ist hier nur als Zusatzoption auf einer "fremden"
+  // Seite gelistet (z.B. "PLUS Körpermitte & Beckenboden" auf der
+  // Donnerstags-Seite) - nur dann macht die Kombi-Wunsch-Option Sinn (siehe
+  // KombiWunschSection oben).
+  const zeigeKombiWunsch = Boolean(selectedCourse) && selectedCourse.course_type !== courseTypeSlug
+
+  // Kombi-Wunsch-Preis: pauschal 10% auf den ohnehin angezeigten Preis des
+  // PLUS-Kurses, aufgerundet auf den vollen Euro - NICHT auf den bereits
+  // laufenden Kurs, den bekommt die Teilnehmerin ja schon zum normalen Preis.
+  // Anders als beim "echten" Kombi-Paket (zwei gleichzeitig gebuchte Kurse)
+  // ist hier sofort ein fester Preis bekannt, ohne Datenbank-Abfrage - die
+  // Bestätigung, ob die Teilnehmerin tatsächlich im anderen Kurs angemeldet
+  // ist, passiert serverseitig beim Mailversand (send-booking-emails.mjs).
+  const kombiWunschPreis = zeigeKombiWunsch ? Math.ceil(effektivPreisKurs * 0.9) : null
+
+  // Online-Kurse sollen in jeder Liste immer ganz unten stehen, hinter den
+  // Präsenzterminen - Array.sort ist stabil, die sonstige Reihenfolge (nach
+  // created_at aus der Datenbank-Abfrage) bleibt innerhalb der beiden
+  // Gruppen (online/nicht online) also unverändert erhalten.
+  function onlineZuletzt(a, b) {
+    return (a.ist_online ? 1 : 0) - (b.ist_online ? 1 : 0)
+  }
+
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
-  const primaerKurse = courses.filter((c) => c.course_type === courseTypeSlug)
-  const komboKurse = courses.filter((c) => c.course_type !== courseTypeSlug)
+  const primaerKurse = courses.filter((c) => c.course_type === courseTypeSlug).sort(onlineZuletzt)
+  const komboKurse = courses.filter((c) => c.course_type !== courseTypeSlug).sort(onlineZuletzt)
 
   function spotsLeftFuer(course) {
     if (!course.max_teilnehmerinnen) return null
@@ -500,7 +545,7 @@ export default function Booking() {
       ort: general.ort,
       dsgvo_akzeptiert: general.dsgvo,
       antirassismus_akzeptiert: general.antirassismus,
-      zusatzfelder: extra,
+      zusatzfelder: extra.kombiWunsch ? { ...extra, kombiPreisGeschaetzt: kombiWunschPreis ?? null } : extra,
     }
 
     // Ein Kombi-Paket erzeugt EINE Anmeldung, landet aber technisch als
@@ -554,7 +599,7 @@ export default function Booking() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        buchung: { ...general, zusatzfelder: extra },
+        buchung: { ...general, zusatzfelder: basisDaten.zusatzfelder },
         kurs: { ...selectedCourse, preis: effektivPreisKurs },
       }),
     }).catch(() => {})
@@ -661,17 +706,23 @@ export default function Booking() {
                   )
                 )}
                 <span className={styles.price}>
-                  €{effektivPreisKurs}
-                  {rabattiertKurs && (
-                    <span className={styles.termineText}>{' '}statt €{selectedCourse.preis}</span>
-                  )}
-                  {rabattiertKurs && selectedCourse.rabatt_hinweis && (
-                    <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
-                  )}
-                  {effektivPreisKurs < grundpreisKurs && (
-                    <span className={styles.termineText}>
-                      {' '}– Preis passt sich der Anzahl verbleibender Stunden an
-                    </span>
+                  {zeigeKombiWunsch ? (
+                    'Preis siehe Anmeldung'
+                  ) : (
+                    <>
+                      €{effektivPreisKurs}
+                      {rabattiertKurs && (
+                        <span className={styles.termineText}>{' '}statt €{selectedCourse.preis}</span>
+                      )}
+                      {rabattiertKurs && selectedCourse.rabatt_hinweis && (
+                        <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
+                      )}
+                      {effektivPreisKurs < grundpreisKurs && (
+                        <span className={styles.termineText}>
+                          {' '}– Preis passt sich der Anzahl verbleibender Stunden an
+                        </span>
+                      )}
+                    </>
                   )}
                 </span>
               </>
@@ -679,6 +730,15 @@ export default function Booking() {
           </div>
 
           <form className={styles.form} onSubmit={handleSubmit}>
+            {zeigeKombiWunsch && (
+              <KombiWunschSection
+                values={extra}
+                onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+                kombiWunschPreis={kombiWunschPreis}
+                normalPreis={effektivPreisKurs}
+              />
+            )}
+
             <div className={styles.section}>
               <h3>Deine Angaben</h3>
               <div className={styles.row}>

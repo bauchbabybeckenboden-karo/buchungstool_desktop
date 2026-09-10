@@ -60,7 +60,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     // sonst bliebe die Teilnehmerin dort halb angemeldet stehen.
     if (participant.paket_id) {
       const bestaetigt = window.confirm(
-        'Das ist eine Kombi-Paket-Anmeldung. Beim Entfernen wird die Teilnehmerin aus BEIDEN gebündelten Kursen entfernt. Fortfahren?'
+        'Das ist eine Kurs-Paket-Anmeldung. Beim Entfernen wird die Teilnehmerin aus BEIDEN gebündelten Kursen entfernt. Fortfahren?'
       )
       if (!bestaetigt) return
 
@@ -147,7 +147,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
 
     if (betroffenePakete && betroffenePakete.length > 0) {
       const namen = betroffenePakete.map((p) => p.name).join(', ')
-      warnung += `\n\nACHTUNG: Dieser Kurs ist Teil von ${betroffenePakete.length} Kombi-Paket(en) (${namen}). Diese Pakete werden beim Löschen automatisch mit entfernt!`
+      warnung += `\n\nACHTUNG: Dieser Kurs ist Teil von ${betroffenePakete.length} Kurs-Paket(en) (${namen}). Diese Pakete werden beim Löschen automatisch mit entfernt!`
     }
 
     if (!window.confirm(warnung)) return
@@ -263,7 +263,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
           {!participantsLoading && !participantsError && participants.length === 0 && <span>Noch keine Anmeldungen.</span>}
           {!participantsError && participants.map((p) => (
             <div className={styles.participantEntry} key={p.id}>
-              <span>{p.vorname} {p.nachname}{p.paket_id ? ' (Kombi-Paket)' : ''}</span>
+              <span>{p.vorname} {p.nachname}{p.paket_id ? ' (Kurs-Paket)' : ''}</span>
               <div className={styles.participantActions}>
                 <select
                   defaultValue=""

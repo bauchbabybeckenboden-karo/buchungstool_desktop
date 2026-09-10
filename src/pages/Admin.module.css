@@ -76,6 +76,45 @@
   gap: 20px;
 }
 
+.importList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.jahrGruppe {
+  margin-bottom: 20px;
+}
+
+.jahrHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: var(--color-box);
+  border: none;
+  border-left: 4px solid var(--color-main);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.jahrPfeil {
+  color: var(--color-main);
+  font-size: 13px;
+}
+
+.jahrAnzahl {
+  font-weight: 400;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
 .addButton {
   margin-top: 20px;
   background: none;
