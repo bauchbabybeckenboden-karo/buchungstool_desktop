@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Admin from './pages/Admin.jsx'
+import AlleKurse from './pages/AlleKurse.jsx'
 import Booking from './pages/Booking.jsx'
 import Login from './pages/Login.jsx'
 import SetNewPassword from './pages/SetNewPassword.jsx'
@@ -30,6 +31,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/admin" replace />} />
       <Route path="/admin" element={<AdminGate />} />
+      {/* Allgemeine Übersicht aller Kursarten, z.B. fuer eine eigene "Kurse"-Seite */}
+      <Route path="/kurse" element={<AlleKurse />} />
       {/* Wird pro Website-Seite eingebettet, z.B. /kurse/mamafit fuer bauch-baby-beckenboden.de/mamafit/ */}
       <Route path="/kurse/:courseTypeSlug" element={<Booking />} />
     </Routes>
