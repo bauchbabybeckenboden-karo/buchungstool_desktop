@@ -3,6 +3,7 @@ import styles from './PaketPanel.module.css'
 import { supabase } from '../supabase.js'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { calculatePaketPreis } from '../pricing.js'
+import { formatDatumDE, ersterTermin } from '../dateUtils.js'
 
 // Verwaltung von Kombi-Paketen: zwei eigenständige, unabhängige Kurse
 // (jeweils mit eigenem Zeitplan) werden zu EINER buchbaren Einheit mit
@@ -52,7 +53,8 @@ export default function PaketPanel() {
   function kursLabel(kurs) {
     if (!kurs) return '(Kurs gelöscht)'
     const typLabel = getCourseTypeBySlug(kurs.course_type)?.label || kurs.course_type
-    return `${kurs.name} (${typLabel}) — ${kurs.preis}€`
+    const datum = formatDatumDE(ersterTermin(kurs))
+    return `${kurs.name} (${typLabel}${datum ? `, ab ${datum}` : ''}) — ${kurs.preis}€`
   }
 
   // Name & Preis automatisch vorschlagen, sobald beide Kurse gewählt sind -

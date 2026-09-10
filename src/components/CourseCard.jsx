@@ -3,6 +3,15 @@ import styles from './CourseCard.module.css'
 import { getCourseTypeBySlug, COURSE_TYPES } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 import { calculatePreis } from '../pricing.js'
+import { formatDatumDE, ersterTermin } from '../dateUtils.js'
+
+// Kursname inkl. erstem Termin, für Auswahl-Dropdowns - ohne Datum sind
+// gleichnamige Kurse (z.B. mehrere "Mamafit Freitags"-Durchläufe) nicht zu
+// unterscheiden und es wird leicht der falsche ausgewählt.
+function kursLabelMitDatum(kurs) {
+  const datum = formatDatumDE(ersterTermin(kurs))
+  return datum ? `${kurs.name} (ab ${datum})` : kurs.name
+}
 
 export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSave, onReload }) {
   const [showParticipants, setShowParticipants] = useState(false)
@@ -184,6 +193,29 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
             title="Wie viel der Preis auf der Buchungsseite pro bereits stattgefundenem Termin sinkt (Standard 16€)"
           />
         </div>
+        {course.rabatt_aktiv && (
+          <div>
+            <label>Rabattpreis (€)</label>
+            <input
+              type="number"
+              value={course.rabatt_preis ?? ''}
+              onChange={(e) => handleField('rabatt_preis', e.target.value === '' ? null : Number(e.target.value))}
+              title="Reduzierter Preis, der anstelle von 'Preis' auf der Buchungsseite angezeigt wird"
+            />
+          </div>
+        )}
+        {course.rabatt_aktiv && (
+          <div className={styles.fieldFull}>
+            <label>Rabatt-Hinweis (für wen)</label>
+            <input
+              type="text"
+              value={course.rabatt_hinweis || ''}
+              onChange={(e) => handleField('rabatt_hinweis', e.target.value || null)}
+              placeholder="z.B. für Neuanmeldungen"
+              title="Wird auf der Buchungsseite direkt neben dem Rabattpreis angezeigt, z.B. 'rabattiert für Neuanmeldungen'"
+            />
+          </div>
+        )}
         <div>
           <label>Max. Teilnehmerinnen</label>
           <input type="number" value={course.max_teilnehmerinnen} onChange={(e) => handleField('max_teilnehmerinnen', Number(e.target.value))} />
@@ -243,7 +275,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
                   {siblingCourses
                     .filter((c) => c.id !== course.id)
                     .map((c) => (
-                      <option key={c.id} value={c.id}>→ {c.name}</option>
+                      <option key={c.id} value={c.id}>→ {kursLabelMitDatum(c)}</option>
                     ))}
                 </select>
                 <button className={styles.removeBtn} onClick={() => removeParticipant(p)}>
@@ -285,6 +317,16 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
         <label htmlFor={`online-${course.id}`}>Online-Kurs (zeigt "ONLINE" auf der Kachel)</label>
       </div>
 
+      <div className={styles.checkboxRow}>
+        <input
+          type="checkbox"
+          id={`rabatt-${course.id}`}
+          checked={course.rabatt_aktiv || false}
+          onChange={(e) => handleField('rabatt_aktiv', e.target.checked)}
+        />
+        <label htmlFor={`rabatt-${course.id}`}>Rabatt aktiv (Kurs wird auf der Buchungsseite für alle günstiger angeboten)</label>
+      </div>
+
       {!course.ist_online && (
         <div className={styles.comboBox}>
           <span className={styles.comboLabel}>
@@ -298,7 +340,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
             {siblingCourses
               .filter((c) => c.ist_online && c.id !== course.id)
               .map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>{kursLabelMitDatum(c)}</option>
               ))}
           </select>
         </div>

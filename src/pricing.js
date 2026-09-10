@@ -63,6 +63,16 @@ export function calculatePaketPreis(preis1, preis2) {
   return bester
 }
 
+// Von Karo manuell gesetzter Rabattpreis (z.B. um einen Kurs attraktiver zu
+// machen), falls für den Kurs aktiviert - sonst der normale Listenpreis.
+// Unabhängig von der automatischen Reduzierung für späte Anmeldungen unten,
+// die zusätzlich (weiter) auf diesen Grundpreis angewendet wird.
+export function effektiverGrundpreis(course) {
+  if (!course) return null
+  if (course.rabatt_aktiv && course.rabatt_preis != null) return Number(course.rabatt_preis)
+  return Number(course.preis)
+}
+
 // Heutiges Datum als "YYYY-MM-DD" in der Zeitzone Europe/Berlin - gleiches
 // Format wie die Einträge in termin_daten, damit ein einfacher String-
 // Vergleich reicht (kein Date-Parsing/Zeitzonen-Ärger).

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { reduzierterPreis, vergangeneTermine } from '../pricing.js'
+import { reduzierterPreis, effektiverGrundpreis } from '../pricing.js'
 
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
@@ -78,11 +78,16 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   const ausgebucht = spotsLeft !== null && spotsLeft <= 0
   const terminliste = formatTerminlisteKurz(terminDatenOderRange(course))
 
-  // Wer erst nach Kursbeginn bucht, zahlt nur noch für die verbleibenden
-  // Termine - der Preis sinkt automatisch um die Terminrate der Kursart je
-  // bereits stattgefundenem Termin (siehe pricing.js).
-  const effektivPreis = reduzierterPreis(course.preis, course)
-  const reduziert = effektivPreis < Number(course.preis)
+  // Grundpreis: entweder Karos manuell gesetzter Rabattpreis (falls für den
+  // Kurs aktiviert) oder der normale Listenpreis. Wer erst nach Kursbeginn
+  // bucht, zahlt zusätzlich nur noch für die verbleibenden Termine (siehe
+  // pricing.js) - beides wird unten getrennt angezeigt, damit ein echter
+  // Rabatt nicht mit der automatischen Späte-Anmeldung-Reduzierung verwechselt
+  // wird.
+  const grundpreis = effektiverGrundpreis(course)
+  const effektivPreis = reduzierterPreis(grundpreis, course)
+  const rabattiert = grundpreis < Number(course.preis)
+  const spaeterReduziert = effektivPreis < grundpreis
 
   const klassen = [styles.termineBox]
   if (istWarnung) klassen.push(styles.termineBoxHighlight)
@@ -101,7 +106,10 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
         <p className={styles.termineLabel}>{beschriftung}</p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         <p className={styles.termineText}>
-          {course.termine} Termine · {effektivPreis}€{reduziert ? ` (statt ${course.preis}€)` : ''}
+          {course.termine} Termine · {effektivPreis}€
+          {rabattiert && ` statt ${course.preis}€`}
+          {rabattiert && course.rabatt_hinweis && ` (rabattiert ${course.rabatt_hinweis})`}
+          {spaeterReduziert && ' – Preis passt sich der Anzahl verbleibender Stunden an'}
         </p>
         {terminliste && <p className={styles.termineDatesLine}>📍 {terminliste}</p>}
       </div>
@@ -157,7 +165,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
         {kursZeile(paket.kurs1)}
         {kursZeile(paket.kurs2)}
         <p className={styles.termineText}>
-          Paketpreis: {effektivPreis}€{reduziert ? ` (statt ${paket.preis}€)` : ''}
+          Paketpreis: {effektivPreis}€{reduziert ? ' – Preis passt sich der Anzahl verbleibender Stunden an' : ''}
         </p>
       </div>
       {!ausgebucht && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
@@ -385,17 +393,16 @@ export default function Booking() {
   const selectedCourse = courses.find((c) => c.id === selectedId)
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
 
-  // Effektiver (ggf. reduzierter) Preis für die aktuelle Auswahl - wird für
-  // Anzeige UND die verschickte Bestätigungsmail verwendet, damit beide
-  // übereinstimmen (siehe pricing.js: reduzierterPreis).
-  const effektivPreisKurs = selectedCourse ? reduzierterPreis(selectedCourse.preis, selectedCourse) : null
-  const vergangeneKurs = selectedCourse ? vergangeneTermine(selectedCourse) : 0
+  // Effektiver (ggf. rabattierter und/oder reduzierter) Preis für die aktuelle
+  // Auswahl - wird für Anzeige UND die verschickte Bestätigungsmail verwendet,
+  // damit beide übereinstimmen (siehe pricing.js: effektiverGrundpreis,
+  // reduzierterPreis).
+  const grundpreisKurs = selectedCourse ? effektiverGrundpreis(selectedCourse) : null
+  const effektivPreisKurs = selectedCourse ? reduzierterPreis(grundpreisKurs, selectedCourse) : null
+  const rabattiertKurs = selectedCourse ? grundpreisKurs < Number(selectedCourse.preis) : false
   const effektivPreisPaket = selectedPaket
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
     : null
-  const vergangenePaket = selectedPaket
-    ? vergangeneTermine(selectedPaket.kurs1) + vergangeneTermine(selectedPaket.kurs2)
-    : 0
 
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
@@ -605,7 +612,7 @@ export default function Booking() {
                   €{effektivPreisPaket} (Paketpreis)
                   {effektivPreisPaket < Number(selectedPaket.preis) && (
                     <span className={styles.termineText}>
-                      {' '}statt €{selectedPaket.preis} – reduziert, da bereits {vergangenePaket} Termin{vergangenePaket === 1 ? '' : 'e'} stattgefunden haben
+                      {' '}– Preis passt sich der Anzahl verbleibender Stunden an
                     </span>
                   )}
                 </span>
@@ -628,9 +635,15 @@ export default function Booking() {
                 )}
                 <span className={styles.price}>
                   €{effektivPreisKurs}
-                  {effektivPreisKurs < Number(selectedCourse.preis) && (
+                  {rabattiertKurs && (
+                    <span className={styles.termineText}>{' '}statt €{selectedCourse.preis}</span>
+                  )}
+                  {rabattiertKurs && selectedCourse.rabatt_hinweis && (
+                    <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
+                  )}
+                  {effektivPreisKurs < grundpreisKurs && (
                     <span className={styles.termineText}>
-                      {' '}statt €{selectedCourse.preis} – reduziert, da bereits {vergangeneKurs} Termin{vergangeneKurs === 1 ? '' : 'e'} stattgefunden haben
+                      {' '}– Preis passt sich der Anzahl verbleibender Stunden an
                     </span>
                   )}
                 </span>
