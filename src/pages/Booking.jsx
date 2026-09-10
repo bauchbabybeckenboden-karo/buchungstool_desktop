@@ -173,7 +173,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   )
 }
 
-function ExtraFields({ courseTypeSlug, values, onChange, zeigeKombiWunsch, kombiPreisInfo }) {
+function ExtraFields({ courseTypeSlug, values, onChange }) {
   if (courseTypeSlug === 'schwangerfit') {
     return (
       <div className={styles.section}>
@@ -263,49 +263,60 @@ function ExtraFields({ courseTypeSlug, values, onChange, zeigeKombiWunsch, kombi
           aber für alle Frauen offen, die sich mit ihrer Körpermitte beschäftigen mögen – ganz egal ob
           Mutter oder Alter.
         </div>
-        {zeigeKombiWunsch && (
-          <>
-            <div className={styles.checkboxGroup}>
-              <input
-                type="checkbox"
-                id="kombiWunsch"
-                checked={values.kombiWunsch || false}
-                onChange={(e) => onChange('kombiWunsch', e.target.checked)}
-              />
-              <label htmlFor="kombiWunsch">
-                Ich bin bereits bei einem laufenden Kurs angemeldet und buche diesen hier zusätzlich – bitte teilt mir den Kombipreis mit
-              </label>
-            </div>
-            {values.kombiWunsch && (
-              <div className={`${styles.row} ${styles.rowFull}`}>
-                <div className={styles.group}>
-                  <label>Bei welchem Kurs bist du bereits angemeldet? *</label>
-                  <select
-                    required
-                    value={values.kombiWunschKurs || ''}
-                    onChange={(e) => onChange('kombiWunschKurs', e.target.value)}
-                  >
-                    <option value="">— bitte auswählen —</option>
-                    <option value="somatic-yoga">Soyo Donnerstags</option>
-                    <option value="mamafit">Mamafit</option>
-                  </select>
-                </div>
-              </div>
-            )}
-            {values.kombiWunsch && values.kombiWunschKurs && (
-              <div className={styles.infoBox}>
-                {kombiPreisInfo
-                  ? `Voraussichtlicher Kombipreis: ${kombiPreisInfo.preis}€ für beide Kurse zusammen (wird von uns nach Prüfung deiner Anmeldung final bestätigt).`
-                  : 'Wir berechnen deinen persönlichen Kombipreis und melden uns nach der Anmeldung bei dir.'}
-              </div>
-            )}
-          </>
-        )}
       </div>
     )
   }
 
   return null
+}
+
+// Wird nur angezeigt, wenn ein Kurs auf einer "fremden" Seite (als
+// Kombi-Kurs-Kachel, z.B. "PLUS Körpermitte & Beckenboden" auf der
+// Donnerstags-Seite) ausgewählt wurde - siehe zeigeKombiWunsch in Booking().
+// Bewusst als eigene, klar beschriftete Sektion GANZ OBEN im Formular (vor
+// "Deine Angaben") statt versteckt in den kursart-spezifischen Feldern, damit
+// sofort klar ist, dass es hier um eine Zusatzbuchung zu einem bereits
+// laufenden Kurs geht.
+function KombiWunschSection({ values, onChange, kombiPreisInfo }) {
+  return (
+    <div className={styles.section}>
+      <h3>Zusätzliche Buchung zum bereits laufenden Kurs</h3>
+      <div className={styles.checkboxGroup}>
+        <input
+          type="checkbox"
+          id="kombiWunsch"
+          checked={values.kombiWunsch || false}
+          onChange={(e) => onChange('kombiWunsch', e.target.checked)}
+        />
+        <label htmlFor="kombiWunsch">
+          Ich bin bereits bei einem laufenden Kurs angemeldet und buche diesen hier zusätzlich – bitte teilt mir den Kombipreis mit
+        </label>
+      </div>
+      {values.kombiWunsch && (
+        <div className={`${styles.row} ${styles.rowFull}`}>
+          <div className={styles.group}>
+            <label>Bei welchem Kurs bist du bereits angemeldet? *</label>
+            <select
+              required
+              value={values.kombiWunschKurs || ''}
+              onChange={(e) => onChange('kombiWunschKurs', e.target.value)}
+            >
+              <option value="">— bitte auswählen —</option>
+              <option value="somatic-yoga">Soyo Donnerstags</option>
+              <option value="mamafit">Mamafit</option>
+            </select>
+          </div>
+        </div>
+      )}
+      {values.kombiWunsch && values.kombiWunschKurs && (
+        <div className={styles.infoBox}>
+          {kombiPreisInfo
+            ? `Voraussichtlicher Kombipreis: ${kombiPreisInfo.preis}€ für beide Kurse zusammen (wird von uns nach Prüfung deiner Anmeldung final bestätigt).`
+            : 'Wir berechnen deinen persönlichen Kombipreis und melden uns nach der Anmeldung bei dir.'}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const initialGeneral = {
@@ -485,6 +496,12 @@ export default function Booking() {
   const effektivPreisPaket = selectedPaket
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
     : null
+
+  // Der ausgewählte Kurs ist hier nur als Zusatzoption auf einer "fremden"
+  // Seite gelistet (z.B. "PLUS Körpermitte & Beckenboden" auf der
+  // Donnerstags-Seite) - nur dann macht die Kombi-Wunsch-Option Sinn (siehe
+  // KombiWunschSection oben).
+  const zeigeKombiWunsch = Boolean(selectedCourse) && selectedCourse.course_type !== courseTypeSlug
 
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
@@ -734,6 +751,14 @@ export default function Booking() {
           </div>
 
           <form className={styles.form} onSubmit={handleSubmit}>
+            {zeigeKombiWunsch && (
+              <KombiWunschSection
+                values={extra}
+                onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+                kombiPreisInfo={kombiPreisInfo}
+              />
+            )}
+
             <div className={styles.section}>
               <h3>Deine Angaben</h3>
               <div className={styles.row}>
@@ -805,8 +830,6 @@ export default function Booking() {
                 courseTypeSlug={selectedCourse.course_type}
                 values={extra}
                 onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-                zeigeKombiWunsch={selectedCourse.course_type !== courseTypeSlug}
-                kombiPreisInfo={kombiPreisInfo}
               />
             )}
 
