@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import styles from './Admin.module.css'
-import { COURSE_TYPES } from '../courseTypes.js'
+import { COURSE_TYPES, getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 import CourseCard from '../components/CourseCard.jsx'
 import ImportPanel from '../components/ImportPanel.jsx'
@@ -37,13 +37,17 @@ export default function Admin() {
   }
 
   async function addCourse(courseTypeSlug) {
+    // Manche Kursarten haben eine abweichende Standarddauer (z.B. Schwangerfit
+    // immer 75 statt 60 Minuten) - siehe defaultDauerMin in courseTypes.js.
+    const dauerMin = getCourseTypeBySlug(courseTypeSlug)?.defaultDauerMin || 60
+
     const { data, error } = await supabase
       .from('kurse')
       .insert({
         course_type: courseTypeSlug,
         name: 'Neuer Kurs',
         termine: 5,
-        dauer_min: 60,
+        dauer_min: dauerMin,
         preis: 80,
         max_teilnehmerinnen: 10,
         sichtbar_auf_website: false,

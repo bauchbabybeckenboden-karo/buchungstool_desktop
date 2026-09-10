@@ -14,6 +14,7 @@ export const COURSE_TYPES = [
     label: 'Schwangerfit',
     websitePath: '/schwangerfit/',
     extraFields: ['sportverbot', 'notfallkontakt', 'et'],
+    defaultDauerMin: 75,
   },
   {
     slug: 'somatic-yoga',
