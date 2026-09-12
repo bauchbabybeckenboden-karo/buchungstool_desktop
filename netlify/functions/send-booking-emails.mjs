@@ -1,6 +1,6 @@
 // Verschickt nach einer Buchung zwei E-Mails über Resend:
 // 1. Bestätigung an die Teilnehmerin
-// 2. Benachrichtigung an Karo (im Setmore-"Neuer Teilnehmer"-Stil) inkl. Visitenkarte(n) zum Abspeichern
+// 2. Benachrichtigung an Karo (im Setmore-"Neue Teilnehmerin"-Stil) inkl. Visitenkarte(n) zum Abspeichern
 
 import { createClient } from "@supabase/supabase-js";
 
@@ -255,7 +255,7 @@ export default async (req) => {
               <span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0d9d9;"></span>
               <strong style="font-size:15px;">Bauch Baby Beckenboden</strong>
             </div>
-            <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer (Kurs-Paket)</h2>
+            <h2 style="margin:20px 0 16px 0;font-size:20px;">Neue Teilnehmerin (Kurs-Paket)</h2>
           </div>
           ${gutscheinInfoHtml}
           <table style="width:100%;padding:0 20px;border-collapse:collapse;">
@@ -437,7 +437,7 @@ export default async (req) => {
             <span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0d9d9;"></span>
             <strong style="font-size:15px;">Bauch Baby Beckenboden</strong>
           </div>
-          <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer</h2>
+          <h2 style="margin:20px 0 16px 0;font-size:20px;">Neue Teilnehmerin</h2>
         </div>
         ${kombiWunschInfoHtml}
         ${gutscheinInfoHtml}

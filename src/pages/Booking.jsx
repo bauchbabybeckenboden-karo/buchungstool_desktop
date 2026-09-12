@@ -269,14 +269,18 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
         </div>
         <div className={`${styles.row} ${styles.rowFull}`}>
           <div className={styles.group}>
-            <label>Entbindungstermin (ET) - falls zutreffend</label>
+            <label>Geburtstermin - falls zutreffend</label>
             <input type="date" value={values.et || ''} onChange={(e) => onChange('et', e.target.value)} />
           </div>
         </div>
         <div className={styles.infoBox}>
-          Info für Mütter: Die Babys sollten mindestens 6 Wochen alt sein, besser 8 Wochen. Der Kurs ist
-          aber für alle Frauen offen, die sich mit ihrer Körpermitte beschäftigen mögen – ganz egal ob
-          Mutter oder Alter.
+          <p style={{ margin: '0 0 10px' }}>
+            Dieser Kurs steht allen Frauen offen, unabhängig vom Alter oder Mutter-Sein. 🌿
+          </p>
+          <p style={{ margin: 0 }}>
+            💕 Liebe Mütter: Die Entbindung sollte mindestens <strong>6</strong>, besser <strong>8</strong> Wochen
+            zurückliegen.
+          </p>
         </div>
       </div>
     )
