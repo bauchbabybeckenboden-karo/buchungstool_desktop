@@ -263,7 +263,17 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
           {!participantsLoading && !participantsError && participants.length === 0 && <span>Noch keine Anmeldungen.</span>}
           {!participantsError && participants.map((p) => (
             <div className={styles.participantEntry} key={p.id}>
-              <span>{p.vorname} {p.nachname}{p.paket_id ? ' (Kurs-Paket)' : ''}</span>
+              <span>
+                {p.vorname} {p.nachname}{p.paket_id ? ' (Kurs-Paket)' : ''}
+                {p.hat_gutschein && (
+                  <>
+                    {' '}🎟️ Gutschein{p.gutschein_betrag != null ? ` (${p.gutschein_betrag}€)` : ''}
+                    {p.gutschein_foto_url && (
+                      <> · <a href={p.gutschein_foto_url} target="_blank" rel="noreferrer">Foto</a></>
+                    )}
+                  </>
+                )}
+              </span>
               <div className={styles.participantActions}>
                 <select
                   defaultValue=""

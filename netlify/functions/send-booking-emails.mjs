@@ -143,8 +143,14 @@ export default async (req) => {
   if (!RESEND_API_KEY) return new Response("RESEND_API_KEY fehlt", { status: 500 });
 
   try {
-    const { buchung, kurs, paket } = await req.json();
+    const { buchung, kurs, paket, gutschein } = await req.json();
     const zusatz = buchung.zusatzfelder || {};
+
+    // Gutschein-Hinweis für Karo - identisch für Einzelkurs- und
+    // Kurs-Paket-Admin-Mail (siehe unten, jeweils oben in adminHtml).
+    const gutscheinInfoHtml = gutschein
+      ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:1px solid #e0c26a;border-radius:6px;font-size:13px;color:#6b4e1e;">🎟️ Gutschein angegeben: <strong>${gutschein.betrag} €</strong>${gutschein.fotoUrl ? ` – <a href="${gutschein.fotoUrl}" style="color:#6b4e1e;">Foto ansehen</a>` : " (kein Foto hochgeladen)"}</div>`
+      : "";
 
     // --- Kombi-Paket: eine gemeinsame Bestätigungsmail für beide gebündelten Kurse ---
     if (paket) {
@@ -251,6 +257,7 @@ export default async (req) => {
             </div>
             <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer (Kurs-Paket)</h2>
           </div>
+          ${gutscheinInfoHtml}
           <table style="width:100%;padding:0 20px;border-collapse:collapse;">
             ${zeile("Paket", escapeHtml(name))}
             ${zeile("Wann", wannTextPaket)}
@@ -433,6 +440,7 @@ export default async (req) => {
           <h2 style="margin:20px 0 16px 0;font-size:20px;">Neuer Teilnehmer</h2>
         </div>
         ${kombiWunschInfoHtml}
+        ${gutscheinInfoHtml}
         <table style="width:100%;padding:0 20px;border-collapse:collapse;">
           ${zeile("Was", `${formatDatumKurz(kurs.start_datum)} ${escapeHtml(kursBezeichnung)}`)}
           ${zeile("Wann", wannText)}

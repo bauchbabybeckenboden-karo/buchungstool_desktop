@@ -319,10 +319,67 @@ function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis })
   )
 }
 
+// Gutschein-Angabe: unabhängig von Kurs/Kombi-Wunsch verfügbar. Bei
+// Ankreuzen erscheinen Betragsfeld + Foto-Upload sowie Karos Hinweistext
+// mit Überweisungsanleitung. Das Foto landet direkt in der Buchung
+// (Supabase Storage), keine zusätzliche Mail von der Teilnehmerin nötig.
+function GutscheinSection({ values, onChange, foto, onFotoChange, kursbetrag }) {
+  return (
+    <div className={styles.section}>
+      <h3>Gutschein</h3>
+      <div className={styles.checkboxGroup}>
+        <input
+          type="checkbox"
+          id="hatGutschein"
+          checked={values.hatGutschein || false}
+          onChange={(e) => onChange('hatGutschein', e.target.checked)}
+        />
+        <label htmlFor="hatGutschein">Ich habe einen Gutschein</label>
+      </div>
+      {values.hatGutschein && (
+        <>
+          <div className={`${styles.row} ${styles.rowFull}`}>
+            <div className={styles.group}>
+              <label>Gutscheinbetrag (€) *</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={values.gutscheinBetrag || ''}
+                onChange={(e) => onChange('gutscheinBetrag', e.target.value)}
+              />
+            </div>
+          </div>
+          <div className={`${styles.row} ${styles.rowFull}`}>
+            <div className={styles.group}>
+              <label>Foto vom Gutschein *</label>
+              <input
+                type="file"
+                accept="image/*"
+                required={!foto}
+                onChange={(e) => onFotoChange(e.target.files?.[0] || null)}
+              />
+            </div>
+          </div>
+          <div className={styles.infoBox}>
+            Es ist schön, dass Du Deinen Gutschein umsetzen möchtest! 💕 Bitte überweise den{' '}
+            {kursbetrag != null ? <strong>{kursbetrag}€</strong> : 'Kursbetrag'} abzüglich des Gutscheinbetrages
+            schnellstmöglich. Vermerke zusätzlich "Gutschein" in der Überweisung. Das Original bring bitte zum
+            Kursstart mit. 🌿
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 const initialGeneral = {
   vorname: '', nachname: '', email: '', telefon: '', strasse: '', plz: '', ort: '',
   dsgvo: false, antirassismus: false,
 }
+
+const initialGutschein = { hatGutschein: false, gutscheinBetrag: '' }
 
 export default function Booking() {
   const { courseTypeSlug } = useParams()
@@ -337,6 +394,8 @@ export default function Booking() {
   const [selectedPaketId, setSelectedPaketId] = useState('')
   const [general, setGeneral] = useState(initialGeneral)
   const [extra, setExtra] = useState({})
+  const [gutschein, setGutschein] = useState(initialGutschein)
+  const [gutscheinFoto, setGutscheinFoto] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
@@ -530,10 +589,41 @@ export default function Booking() {
     return `Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut. (${error?.message || 'unbekannter Fehler'})`
   }
 
+  // Lädt das Gutschein-Foto in den öffentlichen "gutschein-fotos"-Storage-
+  // Bucket hoch (läuft, wie die Buchung selbst, ohne Login mit dem
+  // öffentlichen anon-Key) und gibt die öffentliche URL zurück - die landet
+  // direkt in der Buchung, keine separate Mail mit Foto nötig.
+  async function uploadGutscheinFoto(file) {
+    const endung = (file.name.split('.').pop() || 'jpg').toLowerCase()
+    const pfad = `${Date.now()}-${Math.random().toString(36).slice(2)}.${endung}`
+    const { error } = await supabase.storage
+      .from('gutschein-fotos')
+      .upload(pfad, file, { contentType: file.type || 'image/jpeg' })
+    if (error) return { error }
+    const { data } = supabase.storage.from('gutschein-fotos').getPublicUrl(pfad)
+    return { url: data.publicUrl }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     setSubmitting(true)
     setSubmitError(null)
+
+    let gutscheinFotoUrl = null
+    if (gutschein.hatGutschein) {
+      if (!gutscheinFoto) {
+        setSubmitting(false)
+        setSubmitError('Bitte lade ein Foto vom Gutschein hoch.')
+        return
+      }
+      const { url, error: fotoError } = await uploadGutscheinFoto(gutscheinFoto)
+      if (fotoError) {
+        setSubmitting(false)
+        setSubmitError(`Das Gutschein-Foto konnte nicht hochgeladen werden. Bitte versuch es erneut. (${fotoError.message})`)
+        return
+      }
+      gutscheinFotoUrl = url
+    }
 
     const basisDaten = {
       vorname: general.vorname,
@@ -546,7 +636,16 @@ export default function Booking() {
       dsgvo_akzeptiert: general.dsgvo,
       antirassismus_akzeptiert: general.antirassismus,
       zusatzfelder: extra.kombiWunsch ? { ...extra, kombiPreisGeschaetzt: kombiWunschPreis ?? null } : extra,
+      hat_gutschein: gutschein.hatGutschein,
+      gutschein_betrag: gutschein.hatGutschein ? Number(gutschein.gutscheinBetrag) : null,
+      gutschein_foto_url: gutscheinFotoUrl,
     }
+
+    // Für die Admin-Mail (send-booking-emails.mjs) - dort liegt kein Zugriff
+    // auf `basisDaten`/`gutscheinFotoUrl` vor, deshalb separat mitgeschickt.
+    const gutscheinFuerMail = gutschein.hatGutschein
+      ? { betrag: Number(gutschein.gutscheinBetrag), fotoUrl: gutscheinFotoUrl }
+      : null
 
     // Ein Kombi-Paket erzeugt EINE Anmeldung, landet aber technisch als
     // zwei verknüpfte Zeilen in "buchungen" (eine pro zugrundeliegendem
@@ -579,6 +678,7 @@ export default function Booking() {
         body: JSON.stringify({
           buchung: { ...general, zusatzfelder: extra },
           paket: { name: selectedPaket.name, preis: effektivPreisPaket, kurse: [selectedPaket.kurs1, selectedPaket.kurs2] },
+          gutschein: gutscheinFuerMail,
         }),
       }).catch(() => {})
       return
@@ -601,6 +701,7 @@ export default function Booking() {
       body: JSON.stringify({
         buchung: { ...general, zusatzfelder: basisDaten.zusatzfelder },
         kurs: { ...selectedCourse, preis: effektivPreisKurs },
+        gutschein: gutscheinFuerMail,
       }),
     }).catch(() => {})
   }
@@ -789,6 +890,14 @@ export default function Booking() {
                 </label>
               </div>
             </div>
+
+            <GutscheinSection
+              values={gutschein}
+              onChange={(field, value) => setGutschein({ ...gutschein, [field]: value })}
+              foto={gutscheinFoto}
+              onFotoChange={setGutscheinFoto}
+              kursbetrag={selectedPaket ? effektivPreisPaket : effektivPreisKurs}
+            />
 
             {selectedPaket ? (
               <>
