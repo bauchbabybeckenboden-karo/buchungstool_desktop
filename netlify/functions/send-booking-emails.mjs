@@ -103,6 +103,17 @@ function escapeHtml(str) {
   return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// vCard-TEXT-Werte (z.B. NOTE) müssen Backslash, Komma, Semikolon und
+// Zeilenumbrüche escapen (RFC 6350) - sonst werden mehrzeilige Notizen beim
+// Import in die Kontakte-App abgeschnitten oder falsch dargestellt.
+function vCardEscapeText(str) {
+  return String(str || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+}
+
 function vCard({ vorname, nachname, telefon, email, strasse, plz, ort, note }) {
   const lines = [
     "BEGIN:VCARD",
@@ -112,10 +123,53 @@ function vCard({ vorname, nachname, telefon, email, strasse, plz, ort, note }) {
     telefon ? `TEL;TYPE=CELL:${telefon}` : null,
     email ? `EMAIL:${email}` : null,
     strasse ? `ADR;TYPE=HOME:;;${strasse};${ort || ""};;${plz || ""};Deutschland` : null,
-    note ? `NOTE:${note}` : null,
+    note ? `NOTE:${vCardEscapeText(note)}` : null,
     "END:VCARD",
   ].filter(Boolean);
   return lines.join("\r\n");
+}
+
+// Fasst Geburtstermin/ET und Notfallkontakt in EINER Notiz für den
+// Kontakt-Eintrag zusammen, statt (wie bisher beim Notfallkontakt) einen
+// zweiten, separaten Kontakt anzulegen - so bleibt alles an einer Stelle,
+// direkt im Kontakt der Teilnehmerin.
+function kontaktNotizen(zusatz) {
+  const zeilen = [];
+  if (zusatz.et) zeilen.push(`Geburtstermin: ${formatDatumEinfach(zusatz.et)}`);
+  if (zusatz.notfallName || zusatz.notfallTel) {
+    zeilen.push(`Notfallkontakt: ${[zusatz.notfallName, zusatz.notfallTel].filter(Boolean).join(", ")}`);
+  }
+  return zeilen.length ? zeilen.join("\n") : null;
+}
+function formatDatumEinfach(isoDatum) {
+  if (!isoDatum) return "";
+  const [y, m, d] = isoDatum.split("-");
+  return `${d}.${m}.${y}`;
+}
+
+// Emoji + Monat/Jahr vor den Nachnamen im Kontakt, damit Karo auf einen
+// Blick sieht, aus welchem Kurs (und Durchlauf) eine Teilnehmerin kommt,
+// ohne den Kontakt extra öffnen zu müssen.
+const KURS_KONTAKT_EMOJI = {
+  mamafit: "👶🏼",
+  schwangerfit: "🤰",
+  "somatic-yoga": "🌿 🧘🏻‍♀️",
+  "koerpermitte-beckenboden": "🌿♾️",
+};
+function formatMonatJahr(isoDatum) {
+  if (!isoDatum) return "";
+  const [y, m] = isoDatum.split("-");
+  return `${m}/${y}`;
+}
+function kontaktNamePrefix(kurse) {
+  return kurse
+    .map((k) => {
+      const emoji = KURS_KONTAKT_EMOJI[k.course_type];
+      const monatJahr = formatMonatJahr(k.start_datum);
+      return emoji && monatJahr ? `${emoji} ${monatJahr}` : null;
+    })
+    .filter(Boolean)
+    .join(" ");
 }
 
 function base64(str) {
@@ -274,36 +328,24 @@ export default async (req) => {
           </table>
         </div>`;
 
+      const namePrefixPaket = kontaktNamePrefix(kurse);
       const attachments = [
         {
           filename: `${buchung.vorname}-${buchung.nachname}.vcf`,
           content: base64(
             vCard({
               vorname: buchung.vorname,
-              nachname: buchung.nachname,
+              nachname: namePrefixPaket ? `${namePrefixPaket} ${buchung.nachname}` : buchung.nachname,
               telefon: buchung.telefon,
               email: buchung.email,
               strasse: buchung.strasse,
               plz: buchung.plz,
               ort: buchung.ort,
+              note: kontaktNotizen(zusatz),
             })
           ),
         },
       ];
-
-      const notfallKurs = kurse.find((k) => k.course_type === "schwangerfit");
-      if (notfallKurs && zusatz.notfallTel) {
-        attachments.push({
-          filename: `Notfallkontakt-${buchung.vorname}-${buchung.nachname}.vcf`,
-          content: base64(
-            vCard({
-              vorname: "Teilnehmerin – Notfallkontakt",
-              nachname: `(${zusatz.notfallName || buchung.vorname + " " + buchung.nachname})`,
-              telefon: zusatz.notfallTel,
-            })
-          ),
-        });
-      }
 
       await sendResend({
         from: FROM,
@@ -457,35 +499,24 @@ export default async (req) => {
         </table>
       </div>`;
 
+    const namePrefixEinzel = kontaktNamePrefix([kurs]);
     const attachments = [
       {
         filename: `${buchung.vorname}-${buchung.nachname}.vcf`,
         content: base64(
           vCard({
             vorname: buchung.vorname,
-            nachname: buchung.nachname,
+            nachname: namePrefixEinzel ? `${namePrefixEinzel} ${buchung.nachname}` : buchung.nachname,
             telefon: buchung.telefon,
             email: buchung.email,
             strasse: buchung.strasse,
             plz: buchung.plz,
             ort: buchung.ort,
+            note: kontaktNotizen(zusatz),
           })
         ),
       },
     ];
-
-    if (kurs.course_type === "schwangerfit" && zusatz.notfallTel) {
-      attachments.push({
-        filename: `Notfallkontakt-${buchung.vorname}-${buchung.nachname}.vcf`,
-        content: base64(
-          vCard({
-            vorname: "Teilnehmerin – Notfallkontakt",
-            nachname: `(${zusatz.notfallName || buchung.vorname + " " + buchung.nachname})`,
-            telefon: zusatz.notfallTel,
-          })
-        ),
-      });
-    }
 
     await sendResend({
       from: FROM,

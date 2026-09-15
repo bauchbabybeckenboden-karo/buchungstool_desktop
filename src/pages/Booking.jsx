@@ -71,11 +71,19 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   if (comboLabel) {
     titelText = `PLUS ${comboLabel} ab ${zeitpunkt}`
   } else if (spotsLeft !== null && spotsLeft <= 0) {
-    titelText = `Ausgebucht ${zeitpunkt}`
+    // "Vor Ort ausgebucht" nur, wenn es tatsächlich einen Online-Partnerkurs
+    // gibt, auf den ausgewichen werden kann (siehe online_partner_id) - der
+    // wird durch den DB-Trigger automatisch sichtbar und erscheint als eigene
+    // Kachel direkt in der Liste. Ohne Online-Alternative bleibt es schlicht
+    // "Ausgebucht", da "Vor Ort" sonst irreführend wäre.
+    titelText = `${course.online_partner_id ? 'Vor Ort ausgebucht' : 'Ausgebucht'} ${zeitpunkt}`
     istWarnung = true
-  } else if (spotsLeft !== null && spotsLeft <= 3) {
-    titelText = `Wenige Plätze verfügbar ${zeitpunkt}`
-    istWarnung = true
+  } else if (spotsLeft !== null) {
+    // Freie Plätze durchgängig anzeigen (nicht erst ab wenigen Plätzen) -
+    // solange der Kurs noch vor Ort buchbar ist, bis er ggf. auf "nur noch
+    // online" umspringt.
+    titelText = `${zeitpunkt} · noch ${spotsLeft} ${spotsLeft === 1 ? 'Platz' : 'Plätze'} frei`
+    istWarnung = spotsLeft <= 3
   } else {
     titelText = zeitpunkt
   }
@@ -147,7 +155,12 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
 
   let titelText = paket.name
   if (ausgebucht) titelText = `Ausgebucht — ${paket.name}`
-  else if (wenigePlaetze) titelText = `Wenige Plätze verfügbar — ${paket.name}`
+  // Freie Plätze durchgängig anzeigen, nicht erst ab wenigen Plätzen (siehe
+  // TerminBox) - Kurs-Pakete haben keinen Online-Partner, daher bleibt es
+  // bei "Ausgebucht" ohne "Vor Ort".
+  else if (spotsLeft !== null) {
+    titelText = `${paket.name} · noch ${spotsLeft} ${spotsLeft === 1 ? 'Platz' : 'Plätze'} frei`
+  }
 
   const klassen = [styles.termineBox]
   if (wenigePlaetze) klassen.push(styles.termineBoxHighlight)
