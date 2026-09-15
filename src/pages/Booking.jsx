@@ -491,29 +491,34 @@ export default function Booking() {
     return () => { active = false }
   }, [courseTypeSlug])
 
-  // Belegungszahlen laden, um "Wenige Plätze verfügbar" / "Ausgebucht" auf
+  // Belegungszahlen laden, um "noch X Plätze frei" / "Vor Ort ausgebucht" auf
   // den Termin- und Paket-Kacheln anzuzeigen. Bei Kombi-Paketen zählt der
   // jeweils knappere der beiden zugrundeliegenden Kurse.
+  //
+  // WICHTIG: Läuft über die RPC-Funktion "kurs_belegung" (siehe Migration
+  // kurs_belegung_oeffentlich_lesbar), NICHT über ein direktes SELECT auf
+  // "buchungen" - die Tabelle ist per RLS bewusst nur für authenticated
+  // lesbar (Datenschutz: Namen/Kontaktdaten der Teilnehmerinnen), ein anonymer
+  // Website-Besuch bekäme sonst immer eine leere Liste zurück und spotsLeft
+  // entspräche fälschlich immer der vollen Maximalzahl (der Bug, den Karo am
+  // 15.09. gemeldet hat). Die RPC-Funktion gibt ausschließlich kurs_id +
+  // Anzahl zurück, keine persönlichen Daten.
   useEffect(() => {
-    const relevanteIds = new Set(courses.map((c) => c.id))
-    pakete.forEach((p) => { relevanteIds.add(p.kurs1.id); relevanteIds.add(p.kurs2.id) })
-    if (relevanteIds.size === 0) {
-      setBookingCounts({})
-      return
-    }
     let active = true
     supabase
-      .from('buchungen')
-      .select('kurs_id')
-      .in('kurs_id', [...relevanteIds])
-      .then(({ data }) => {
+      .rpc('kurs_belegung')
+      .then(({ data, error }) => {
         if (!active) return
+        if (error) {
+          console.error('Belegungszahlen konnten nicht geladen werden:', error.message)
+          return
+        }
         const counts = {}
-        ;(data || []).forEach((b) => { counts[b.kurs_id] = (counts[b.kurs_id] || 0) + 1 })
+        ;(data || []).forEach((row) => { counts[row.kurs_id] = row.anzahl_buchungen })
         setBookingCounts(counts)
       })
     return () => { active = false }
-  }, [courses, pakete])
+  }, [])
 
   const selectedCourse = courses.find((c) => c.id === selectedId)
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
