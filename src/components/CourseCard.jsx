@@ -13,13 +13,23 @@ function kursLabelMitDatum(kurs) {
   return datum ? `${kurs.name} (ab ${datum})` : kurs.name
 }
 
-export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSave, onReload }) {
+export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSave, onReload, collapsed, onToggleCollapsed }) {
   const [showParticipants, setShowParticipants] = useState(false)
   const [participants, setParticipants] = useState([])
   const [participantsError, setParticipantsError] = useState(null)
   const [participantsLoading, setParticipantsLoading] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const courseType = getCourseTypeBySlug(course.course_type)
+
+  // Kompakte Datumsanzeige für die eingeklappte Kachel (nur Name & Daten,
+  // siehe collapsed-Header unten) - erster bis letzter Termin, oder nur der
+  // erste, falls kein Enddatum bekannt ist.
+  const datumsRange = (() => {
+    const start = formatDatumDE(course.start_datum)
+    const ende = formatDatumDE(course.end_datum)
+    if (start && ende && start !== ende) return `${start} – ${ende}`
+    return start || ende || 'Kein Termin'
+  })()
 
   useEffect(() => {
     if (showParticipants) loadParticipants()
@@ -162,6 +172,14 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
 
   return (
     <div className={styles.card}>
+      <button type="button" className={styles.collapseHeader} onClick={onToggleCollapsed}>
+        <span className={styles.collapsePfeil}>{collapsed ? '▸' : '▾'}</span>
+        <span className={styles.collapseName}>{course.name}</span>
+        <span className={styles.collapseDatum}>{datumsRange}</span>
+      </button>
+
+      {!collapsed && (
+        <>
       <div className={styles.editFields}>
         <div className={styles.fieldFull}>
           <label>Kursname</label>
@@ -374,6 +392,8 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
           Kurs löschen
         </button>
       </div>
+        </>
+      )}
     </div>
   )
 }

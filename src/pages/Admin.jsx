@@ -26,6 +26,13 @@ export default function Admin() {
   // in der Zukunft liegende Jahre sind eingeklappt - bei weit im Voraus
   // geplanten Kursen sonst eine sehr lange, unübersichtliche Liste).
   const [jahrOverrides, setJahrOverrides] = useState({})
+  // Ein-/Ausklapp-Zustand pro Kurs-Karte (nur Name & Daten sichtbar, wenn
+  // eingeklappt - für eine bessere Übersicht bei vielen Kursen). alleEingeklappt
+  // ist die globale Vorgabe für den "Alle ein-/ausklappen"-Button,
+  // kursOverrides erlaubt es, einzelne Kurse davon abweichend manuell
+  // auf-/zuzuklappen.
+  const [alleEingeklappt, setAlleEingeklappt] = useState(false)
+  const [kursOverrides, setKursOverrides] = useState({})
 
   useEffect(() => {
     loadCourses()
@@ -141,6 +148,22 @@ export default function Admin() {
     setJahrOverrides((prev) => ({ ...prev, [jahr]: !istJahrOffen(jahr) }))
   }
 
+  function istKursEingeklappt(courseId) {
+    return courseId in kursOverrides ? kursOverrides[courseId] : alleEingeklappt
+  }
+
+  function toggleKurs(courseId) {
+    setKursOverrides((prev) => ({ ...prev, [courseId]: !istKursEingeklappt(courseId) }))
+  }
+
+  // Setzt alle Kurse einheitlich auf ein-/ausgeklappt zurück (verwirft dabei
+  // einzelne manuelle Abweichungen, damit der Button verlässlich "alle"
+  // meint).
+  function toggleAlleKurse() {
+    setKursOverrides({})
+    setAlleEingeklappt((v) => !v)
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -172,6 +195,10 @@ export default function Admin() {
       {importError && <p className={styles.hint}>Kursabfrage konnte nicht geladen werden: {importError}</p>}
 
       <PaketPanel />
+
+      <button type="button" className={styles.collapseAllButton} onClick={toggleAlleKurse}>
+        {alleEingeklappt ? 'Alle Kurse ausklappen' : 'Alle Kurse einklappen (nur Name & Daten)'}
+      </button>
 
       <div className={styles.typeTabs}>
         {COURSE_TYPES.map((type) => (
@@ -227,6 +254,8 @@ export default function Admin() {
                         onUpdateLocal={updateCourseLocal}
                         onSave={saveCourse}
                         onReload={loadCourses}
+                        collapsed={istKursEingeklappt(course.id)}
+                        onToggleCollapsed={() => toggleKurs(course.id)}
                       />
                     ))}
                   </div>
