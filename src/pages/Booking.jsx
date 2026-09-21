@@ -302,9 +302,14 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
   return null
 }
 
-// Wird nur angezeigt, wenn ein Kurs auf einer "fremden" Seite (als
-// Kombi-Kurs-Kachel, z.B. "PLUS Körpermitte & Beckenboden" auf der
-// Donnerstags-Seite) ausgewählt wurde - siehe zeigeKombiWunsch in Booking().
+// Wird bei JEDER Einzelkurs-Auswahl angezeigt (egal ob Kombi-Kurs-Kachel auf
+// einer "fremden" Seite, z.B. "PLUS Körpermitte & Beckenboden", oder ein ganz
+// normaler Kurs derselben Kursart wie z.B. ein zweiter Schwangerfit-Termin an
+// einem anderen Wochentag) - siehe zeigeKombiWunsch in Booking(). Ursprünglich
+// nur für kursart-übergreifende Kombis gedacht, aber die Angabe "ich bin
+// schon anderswo angemeldet" ist genauso gültig für zwei Kurse DERSELBEN Art
+// (z.B. schon donnerstags Schwangerfit, jetzt zusätzlich montags) - deshalb
+// bewusst nicht mehr auf unterschiedliche Kursarten eingeschränkt.
 // Bewusst als eigene, klar beschriftete Sektion GANZ OBEN im Formular (vor
 // "Deine Angaben") statt versteckt in den kursart-spezifischen Feldern, damit
 // sofort klar ist, dass es hier um eine Zusatzbuchung zu einem bereits
@@ -321,8 +326,7 @@ function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis })
           onChange={(e) => onChange('kombiWunsch', e.target.checked)}
         />
         <label htmlFor="kombiWunsch">
-          Ich bin bereits bei einem <strong>laufenden</strong> Kurs (Soyo Donnerstags/Mamafit) angemeldet & buche
-          diesen Kurs zusätzlich.
+          Ich bin bereits bei einem <strong>laufenden</strong> Kurs angemeldet & buche diesen Kurs zusätzlich.
         </label>
       </div>
       {values.kombiWunsch && (
@@ -534,11 +538,15 @@ export default function Booking() {
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
     : null
 
-  // Der ausgewählte Kurs ist hier nur als Zusatzoption auf einer "fremden"
-  // Seite gelistet (z.B. "PLUS Körpermitte & Beckenboden" auf der
-  // Donnerstags-Seite) - nur dann macht die Kombi-Wunsch-Option Sinn (siehe
-  // KombiWunschSection oben).
-  const zeigeKombiWunsch = Boolean(selectedCourse) && selectedCourse.course_type !== courseTypeSlug
+  // Die Kombi-Wunsch-Option ("ich bin schon bei einem laufenden Kurs
+  // angemeldet") gilt für JEDE Einzelkurs-Auswahl - egal ob es sich um eine
+  // Zusatzoption auf einer "fremden" Seite handelt (z.B. "PLUS Körpermitte &
+  // Beckenboden" auf der Donnerstags-Seite) oder um einen ganz normalen Kurs
+  // derselben Kursart (z.B. ein zweiter Schwangerfit-Termin an einem anderen
+  // Wochentag) - siehe KombiWunschSection oben. Gilt NICHT für Kurs-Pakete
+  // (selectedPaket), die sind als EINE gemeinsame Neu-Buchung zweier Kurse
+  // schon ihr eigener Mechanismus.
+  const zeigeKombiWunsch = Boolean(selectedCourse)
 
   // Kombi-Wunsch-Preis: pauschal 10% auf den ohnehin angezeigten Preis des
   // PLUS-Kurses, aufgerundet auf den vollen Euro - NICHT auf den bereits
@@ -829,7 +837,7 @@ export default function Booking() {
                   )
                 )}
                 <span className={styles.price}>
-                  {zeigeKombiWunsch ? (
+                  {zeigeKombiWunsch && extra.kombiWunsch ? (
                     'Preis siehe Anmeldung'
                   ) : (
                     <>

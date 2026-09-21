@@ -33,46 +33,46 @@ const COURSE_TYPE_LABELS = {
   "koerpermitte-beckenboden": "Körpermitte & Beckenboden",
 };
 
-// Kursarten, mit denen sich "Körpermitte & Beckenboden" kombinieren lässt
-// (siehe Booking.jsx, KombiWunschSection) - nur dort wird beim Kombi-Wunsch
-// nach einem Namens-Treffer gesucht.
-const KOMBI_PARTNER_COURSE_TYPES = ["somatic-yoga", "mamafit"];
-
 // Prüft per Namensabgleich (Vor- + Nachname, ohne Groß-/Kleinschreibung und
-// führende/folgende Leerzeichen), ob bereits eine Buchung in einem der beiden
-// Kombi-Partnerkurse existiert - das ist die einzige Grundlage, auf der der
-// "Kombi-Wunsch" automatisch bestätigt wird (statt dass Karo jede Anfrage von
-// Hand mit ihren Kurslisten abgleichen muss). Ein Treffer wird bewusst nur
-// bei exakter Namensübereinstimmung gewertet - Tippfehler/Spitznamen führen
-// zu "nicht gefunden" und damit zur manuellen Prüfung durch Karo, nie zu
-// einer fälschlich automatisch bestätigten Buchung.
-async function findeBereitsAngemeldet(vorname, nachname) {
+// führende/folgende Leerzeichen), ob bereits eine Buchung in IRGENDEINEM
+// ANDEREN Kurs existiert (ausschlussKursId schließt nur den gerade neu
+// gebuchten Kurs selbst aus, damit ein Treffer nicht fälschlich die eigene,
+// soeben erst angelegte Buchung findet) - das ist die einzige Grundlage, auf
+// der der "Kombi-Wunsch" automatisch bestätigt wird (statt dass Karo jede
+// Anfrage von Hand mit ihren Kurslisten abgleichen muss). Ein Treffer wird
+// bewusst nur bei exakter Namensübereinstimmung gewertet - Tippfehler/
+// Spitznamen führen zu "nicht gefunden" und damit zur manuellen Prüfung durch
+// Karo, nie zu einer fälschlich automatisch bestätigten Buchung.
+//
+// Ursprünglich nur auf die Kursarten "somatic-yoga"/"mamafit" beschränkt
+// (galt nur für Körpermitte-Kombis) - jetzt bewusst kursartübergreifend, denn
+// "ich bin schon woanders angemeldet" gilt genauso für zwei Kurse DERSELBEN
+// Art (z.B. schon donnerstags Schwangerfit, jetzt zusätzlich montags).
+async function findeBereitsAngemeldet(vorname, nachname, ausschlussKursId) {
   if (!supabaseAdmin) return { geprueft: false, gefunden: false, kursLabel: null };
 
   const vornameTrim = (vorname || "").trim();
   const nachnameTrim = (nachname || "").trim();
   if (!vornameTrim || !nachnameTrim) return { geprueft: true, gefunden: false, kursLabel: null };
 
-  const { data: kurse, error: kurseError } = await supabaseAdmin
-    .from("kurse")
-    .select("id, course_type")
-    .in("course_type", KOMBI_PARTNER_COURSE_TYPES);
-  if (kurseError || !kurse || kurse.length === 0) return { geprueft: true, gefunden: false, kursLabel: null };
-
-  const kursIds = kurse.map((k) => k.id);
-  const { data: treffer, error: buchungenError } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("buchungen")
     .select("kurs_id")
-    .in("kurs_id", kursIds)
     .ilike("vorname", vornameTrim)
     .ilike("nachname", nachnameTrim)
-    .limit(1);
+    .limit(5);
+  if (ausschlussKursId) query = query.neq("kurs_id", ausschlussKursId);
+  const { data: treffer, error: buchungenError } = await query;
   if (buchungenError) return { geprueft: true, gefunden: false, kursLabel: null };
 
   const passenderTreffer = (treffer || [])[0];
   if (!passenderTreffer) return { geprueft: true, gefunden: false, kursLabel: null };
 
-  const passenderKurs = kurse.find((k) => k.id === passenderTreffer.kurs_id);
+  const { data: passenderKurs } = await supabaseAdmin
+    .from("kurse")
+    .select("course_type")
+    .eq("id", passenderTreffer.kurs_id)
+    .maybeSingle();
   return {
     geprueft: true,
     gefunden: true,
@@ -362,15 +362,16 @@ export default async (req) => {
     const kursBezeichnung = `${courseTypeLabel} ${kurs.termine} Termine`;
     const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
 
-    // Körpermitte & Beckenboden: "Ich buche zusätzlich zu einem laufenden Kurs"
-    // - der Preis (10% Rabatt auf den Zusatzkurs) wird im Buchungstool bereits
-    // fest berechnet (Booking.jsx, kombiPreisGeschaetzt). Automatisch ENDGÜLTIG
-    // bestätigt wird er nur, wenn sich der Name in einer bestehenden Buchung
-    // von Soyo Donnerstags oder Mamafit findet (findeBereitsAngemeldet) - sonst
-    // bleibt es vorläufig und Karo bekommt eine auffällige Erinnerung.
+    // "Ich buche zusätzlich zu einem laufenden Kurs" (Kombi-Wunsch, gilt für
+    // jede Einzelkurs-Buchung, siehe Booking.jsx) - der Preis (10% Rabatt auf
+    // den Zusatzkurs) wird im Buchungstool bereits fest berechnet
+    // (kombiPreisGeschaetzt). Automatisch ENDGÜLTIG bestätigt wird er nur,
+    // wenn sich der Name in einer anderen bestehenden Buchung findet
+    // (findeBereitsAngemeldet) - sonst bleibt es vorläufig und Karo bekommt
+    // eine auffällige Erinnerung.
     const kombiPreisGeschaetzt = zusatz.kombiWunsch && zusatz.kombiPreisGeschaetzt != null ? zusatz.kombiPreisGeschaetzt : null;
     const kombiCheck = zusatz.kombiWunsch
-      ? await findeBereitsAngemeldet(buchung.vorname, buchung.nachname)
+      ? await findeBereitsAngemeldet(buchung.vorname, buchung.nachname, kurs.id)
       : null;
 
     const uhrzeitEnde = addMinutes(kurs.uhrzeit, kurs.dauer_min);
@@ -426,7 +427,7 @@ export default async (req) => {
 
             ${
               zusatz.kombiWunsch
-                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei Soyo Donnerstags oder Mamafit angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
+                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei einem laufenden Kurs angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
                     kombiCheck?.gefunden
                       ? `Ich konnte deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Du kannst direkt überweisen.`
                       : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Bitte überweise noch nicht, ich melde mich bei dir, sobald ich es geprüft habe.`
@@ -468,8 +469,8 @@ export default async (req) => {
     // abgleichen muss.
     const kombiWunschInfoHtml = zusatz.kombiWunsch
       ? kombiCheck?.gefunden
-        ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#e6f2e9;border:1px solid #a9d4b5;border-radius:6px;font-size:13px;color:#2f5c3d;">✅ Kombi-Wunsch automatisch bestätigt: Name wurde in den Buchungen von <strong>${escapeHtml(kombiCheck.kursLabel || "Soyo Donnerstags/Mamafit")}</strong> gefunden. Preis für den Zusatzkurs (10 % Rabatt bereits eingerechnet): <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>. Keine weitere Prüfung nötig, Teilnehmerin wurde bereits informiert.</div>`
-        : `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:2px solid #e05d5d;border-radius:6px;font-size:13px;color:#6b1e1e;">❗ Kombi-Wunsch NICHT automatisch bestätigt: Der Name wurde in keiner Buchung von Soyo Donnerstags oder Mamafit gefunden. Bitte manuell prüfen (Tippfehler? anderer Name? tatsächlich nicht angemeldet?) und der Teilnehmerin Bescheid geben. Vorgesehener Preis: <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>.</div>`
+        ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#e6f2e9;border:1px solid #a9d4b5;border-radius:6px;font-size:13px;color:#2f5c3d;">✅ Kombi-Wunsch automatisch bestätigt: Name wurde in einer Buchung${kombiCheck.kursLabel ? ` von <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} gefunden. Preis für den Zusatzkurs (10 % Rabatt bereits eingerechnet): <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>. Keine weitere Prüfung nötig, Teilnehmerin wurde bereits informiert.</div>`
+        : `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:2px solid #e05d5d;border-radius:6px;font-size:13px;color:#6b1e1e;">❗ Kombi-Wunsch NICHT automatisch bestätigt: Der Name wurde in keiner anderen bestehenden Buchung gefunden. Bitte manuell prüfen (Tippfehler? anderer Name? tatsächlich nicht angemeldet?) und der Teilnehmerin Bescheid geben. Vorgesehener Preis: <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>.</div>`
       : "";
 
     const adminHtml = `
