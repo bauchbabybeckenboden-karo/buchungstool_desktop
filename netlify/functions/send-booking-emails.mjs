@@ -80,6 +80,33 @@ async function findeBereitsAngemeldet(vorname, nachname, ausschlussKursId) {
   };
 }
 
+// Schreibt das Ergebnis der automatischen Kombi-Wunsch-Pruefung dauerhaft in
+// die Buchung zurueck (Spalte kombi_wunsch_bestaetigt) - sonst stuende das
+// Ergebnis NUR einmalig in dieser Admin-Mail und waere danach nirgends mehr
+// nachvollziehbar (Karo-Frage: "woher weiss meine HP, dass ich das akzeptiert
+// habe"). Der Insert der Buchung selbst passiert VORHER im Browser (anon-Key,
+// siehe Booking.jsx) - hier wird die frisch angelegte Zeile per
+// kurs_id+vorname+nachname+email wiedergefunden (neueste zuerst, falls
+// dieselbe Person zufaellig mehrfach im selben Kurs steht) und aktualisiert.
+// Best-effort: schlaegt das UPDATE fehl, bleibt die Mail trotzdem die
+// verlaessliche Quelle fuer diese eine Buchung, es wird nur kein Fehler nach
+// aussen geworfen.
+async function speichereKombiBestaetigung(kursId, vorname, nachname, email, bestaetigt) {
+  if (!supabaseAdmin) return;
+  const { data: zeilen } = await supabaseAdmin
+    .from("buchungen")
+    .select("id")
+    .eq("kurs_id", kursId)
+    .ilike("vorname", (vorname || "").trim())
+    .ilike("nachname", (nachname || "").trim())
+    .ilike("email", (email || "").trim())
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const zeile = (zeilen || [])[0];
+  if (!zeile) return;
+  await supabaseAdmin.from("buchungen").update({ kombi_wunsch_bestaetigt: bestaetigt }).eq("id", zeile.id);
+}
+
 const WOCHENTAGE = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const WOCHENTAGE_KURZ = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const MONATE_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
@@ -373,6 +400,9 @@ export default async (req) => {
     const kombiCheck = zusatz.kombiWunsch
       ? await findeBereitsAngemeldet(buchung.vorname, buchung.nachname, kurs.id)
       : null;
+    if (zusatz.kombiWunsch) {
+      await speichereKombiBestaetigung(kurs.id, buchung.vorname, buchung.nachname, buchung.email, Boolean(kombiCheck?.gefunden));
+    }
 
     const uhrzeitEnde = addMinutes(kurs.uhrzeit, kurs.dauer_min);
     const wochentagLang = kurs.start_datum ? WOCHENTAGE[new Date(kurs.start_datum + "T00:00:00").getDay()] : "";

@@ -91,6 +91,25 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     loadParticipants()
   }
 
+  // Kombi-Wunsch manuell bestätigen/ablehnen (überschreibt bzw. ergänzt die
+  // automatische Prüfung beim Buchungseingang, siehe send-booking-emails.mjs
+  // -> speichereKombiBestaetigung). So bleibt der Status dauerhaft hier in
+  // der Teilnehmerinnenliste sichtbar, statt nur einmalig in der
+  // Admin-Benachrichtigungsmail aufzutauchen.
+  async function setKombiBestaetigung(participant, wert) {
+    const { error } = await supabase
+      .from('buchungen')
+      .update({ kombi_wunsch_bestaetigt: wert })
+      .eq('id', participant.id)
+    if (error) {
+      alert('Speichern erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+    setParticipants((prev) =>
+      prev.map((p) => (p.id === participant.id ? { ...p, kombi_wunsch_bestaetigt: wert } : p))
+    )
+  }
+
   async function moveParticipant(id, toCourseId) {
     const { error } = await supabase.from('buchungen').update({ kurs_id: toCourseId }).eq('id', id)
     if (error) {
@@ -289,6 +308,26 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
                     {p.gutschein_foto_url && (
                       <> · <a href={p.gutschein_foto_url} target="_blank" rel="noreferrer">Foto</a></>
                     )}
+                  </>
+                )}
+                {p.zusatzfelder?.kombiWunsch && (
+                  <>
+                    {' '}🔗 Kombi-Wunsch
+                    {p.zusatzfelder.kombiPreisGeschaetzt != null ? ` (${p.zusatzfelder.kombiPreisGeschaetzt}€)` : ''}
+                    {' '}
+                    {p.kombi_wunsch_bestaetigt === true && <span style={{ color: '#3a6b3a' }}>✅ bestätigt</span>}
+                    {p.kombi_wunsch_bestaetigt === false && <span style={{ color: '#b25858' }}>❗ zu prüfen</span>}
+                    {p.kombi_wunsch_bestaetigt === null && <span style={{ color: '#8b6464' }}>… wird geprüft</span>}
+                    {' '}
+                    <button
+                      type="button"
+                      className={styles.link}
+                      style={{ fontSize: '11px' }}
+                      onClick={() => setKombiBestaetigung(p, !p.kombi_wunsch_bestaetigt)}
+                      title="Von Hand bestätigen/ablehnen, z.B. nach eigener Prüfung deiner Kurslisten"
+                    >
+                      {p.kombi_wunsch_bestaetigt ? '(als nicht bestätigt markieren)' : '(manuell bestätigen)'}
+                    </button>
                   </>
                 )}
               </span>
