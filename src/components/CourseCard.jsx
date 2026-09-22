@@ -121,6 +121,26 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     }
   }
 
+  // Kombi-Wunsch-Preis von Hand anpassen (Vorschlag ist normalerweise 10%
+  // Rabatt auf den Zusatzkurs, siehe Booking.jsx) - z.B. wenn Karo einen
+  // krummen/abweichenden Preis vereinbart hat. Landet direkt in
+  // zusatzfelder.kombiPreisGeschaetzt, denselben Wert, den auch die
+  // automatische wie die manuelle Bestätigungsmail verschickt.
+  async function setKombiPreis(participant, neuerPreis) {
+    const neueZusatzfelder = { ...(participant.zusatzfelder || {}), kombiPreisGeschaetzt: neuerPreis }
+    const { error } = await supabase
+      .from('buchungen')
+      .update({ zusatzfelder: neueZusatzfelder })
+      .eq('id', participant.id)
+    if (error) {
+      alert('Speichern erfordert Admin-Login (noch einzurichten).')
+      return
+    }
+    setParticipants((prev) =>
+      prev.map((p) => (p.id === participant.id ? { ...p, zusatzfelder: neueZusatzfelder } : p))
+    )
+  }
+
   async function moveParticipant(id, toCourseId) {
     const { error } = await supabase.from('buchungen').update({ kurs_id: toCourseId }).eq('id', id)
     if (error) {
@@ -323,8 +343,18 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
                 )}
                 {p.zusatzfelder?.kombiWunsch && (
                   <>
-                    {' '}🔗 Kombi-Wunsch
-                    {p.zusatzfelder.kombiPreisGeschaetzt != null ? ` (${p.zusatzfelder.kombiPreisGeschaetzt}€)` : ''}
+                    {' '}🔗 Kombi-Wunsch (
+                    <input
+                      type="number"
+                      defaultValue={p.zusatzfelder.kombiPreisGeschaetzt ?? ''}
+                      onBlur={(e) => {
+                        const wert = e.target.value === '' ? null : Number(e.target.value)
+                        if (wert !== (p.zusatzfelder.kombiPreisGeschaetzt ?? null)) setKombiPreis(p, wert)
+                      }}
+                      title="Preis von Hand anpassen (Vorschlag: 10% Rabatt) - wirkt sich auf die Bestätigungsmail aus"
+                      style={{ width: '55px', fontSize: '11px', padding: '1px 4px' }}
+                    />
+                    €)
                     {' '}
                     {p.kombi_wunsch_bestaetigt === true && <span style={{ color: '#3a6b3a' }}>✅ bestätigt</span>}
                     {p.kombi_wunsch_bestaetigt === false && <span style={{ color: '#b25858' }}>❗ zu prüfen</span>}
