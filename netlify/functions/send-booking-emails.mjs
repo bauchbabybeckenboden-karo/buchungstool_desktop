@@ -219,12 +219,61 @@ async function sendResend(payload) {
   return res.json();
 }
 
+// Wird aufgerufen, wenn Karo im Admin-Bereich einen Kombi-Wunsch nachträglich
+// manuell bestätigt (Button "manuell bestätigen" in CourseCard.jsx) - die
+// automatische Prüfung beim Buchungseingang hat dann keinen Treffer gefunden,
+// die Teilnehmerin wartet also noch auf die finale Bestätigung ("ich melde
+// mich, sobald ich es geprüft habe", siehe Bestätigungsmail beim Buchen).
+// Ohne diese Mail würde die manuelle Bestätigung NUR in der Admin-Ansicht
+// landen - die Teilnehmerin selbst würde nie davon erfahren (Karo-Frage:
+// "wie bekommen alle die Info, dass es ok ist").
+async function sendeKombiBestaetigungsMail(buchungId) {
+  if (!supabaseAdmin) return new Response(JSON.stringify({ error: "kein Admin-Zugriff konfiguriert" }), { status: 500 });
+
+  const { data: buchung, error: buchungError } = await supabaseAdmin
+    .from("buchungen")
+    .select("*")
+    .eq("id", buchungId)
+    .maybeSingle();
+  if (buchungError || !buchung) {
+    return new Response(JSON.stringify({ error: "Buchung nicht gefunden" }), { status: 404 });
+  }
+
+  const { data: kurs } = await supabaseAdmin.from("kurse").select("*").eq("id", buchung.kurs_id).maybeSingle();
+  const courseTypeLabel = kurs ? COURSE_TYPE_LABELS[kurs.course_type] || kurs.course_type : "";
+  const preis = buchung.zusatzfelder?.kombiPreisGeschaetzt ?? kurs?.preis ?? "?";
+
+  await sendResend({
+    from: FROM,
+    to: buchung.email,
+    subject: `Bestätigt: dein Zusatzkurs${courseTypeLabel ? ` ${courseTypeLabel}` : ""}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px 20px;color:#333;">
+        <p>Liebe ${escapeHtml(buchung.vorname || "")},</p>
+        <p>ich konnte deinen Kombi-Wunsch jetzt bestätigen! Dein Preis für den Zusatzkurs${courseTypeLabel ? ` (${escapeHtml(courseTypeLabel)})` : ""} ist damit final: <strong>${preis} €</strong>. Du kannst jetzt gerne überweisen.</p>
+        <p>Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
+      </div>`,
+  });
+
+  return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
 export default async (req) => {
   if (req.method !== "POST") return new Response("POST erwartet", { status: 405 });
   if (!RESEND_API_KEY) return new Response("RESEND_API_KEY fehlt", { status: 500 });
 
   try {
-    const { buchung, kurs, paket, gutschein } = await req.json();
+    const body = await req.json();
+
+    // Separater, schlanker Pfad für die nachträgliche Kombi-Wunsch-Bestätigung
+    // (siehe sendeKombiBestaetigungsMail oben) - kein Bezug zu einer frisch
+    // eingehenden Buchung, deshalb eigenständig statt im Rest der Funktion
+    // durchgeschleift.
+    if (body.action === "kombiBestaetigung") {
+      return await sendeKombiBestaetigungsMail(body.buchungId);
+    }
+
+    const { buchung, kurs, paket, gutschein } = body;
     const zusatz = buchung.zusatzfelder || {};
 
     // Gutschein-Hinweis für Karo - identisch für Einzelkurs- und

@@ -95,7 +95,11 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
   // automatische Prüfung beim Buchungseingang, siehe send-booking-emails.mjs
   // -> speichereKombiBestaetigung). So bleibt der Status dauerhaft hier in
   // der Teilnehmerinnenliste sichtbar, statt nur einmalig in der
-  // Admin-Benachrichtigungsmail aufzutauchen.
+  // Admin-Benachrichtigungsmail aufzutauchen. Wird dabei auf "bestätigt"
+  // gesetzt, bekommt die Teilnehmerin zusätzlich automatisch eine kurze
+  // Bestätigungsmail (send-booking-emails.mjs, action "kombiBestaetigung") -
+  // sonst würde nur Karo im Admin-Bereich davon erfahren, die Teilnehmerin
+  // selbst nie.
   async function setKombiBestaetigung(participant, wert) {
     const { error } = await supabase
       .from('buchungen')
@@ -108,6 +112,13 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     setParticipants((prev) =>
       prev.map((p) => (p.id === participant.id ? { ...p, kombi_wunsch_bestaetigt: wert } : p))
     )
+    if (wert) {
+      fetch('/.netlify/functions/send-booking-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'kombiBestaetigung', buchungId: participant.id }),
+      }).catch(() => {})
+    }
   }
 
   async function moveParticipant(id, toCourseId) {
@@ -324,9 +335,13 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
                       className={styles.link}
                       style={{ fontSize: '11px' }}
                       onClick={() => setKombiBestaetigung(p, !p.kombi_wunsch_bestaetigt)}
-                      title="Von Hand bestätigen/ablehnen, z.B. nach eigener Prüfung deiner Kurslisten"
+                      title={
+                        p.kombi_wunsch_bestaetigt
+                          ? 'Von Hand zurücksetzen, z.B. bei einem Fehler'
+                          : 'Von Hand bestätigen, z.B. nach eigener Prüfung deiner Kurslisten - die Teilnehmerin bekommt dann automatisch eine Bestätigungsmail'
+                      }
                     >
-                      {p.kombi_wunsch_bestaetigt ? '(als nicht bestätigt markieren)' : '(manuell bestätigen)'}
+                      {p.kombi_wunsch_bestaetigt ? '(als nicht bestätigt markieren)' : '(manuell bestätigen → Mail geht raus)'}
                     </button>
                   </>
                 )}
