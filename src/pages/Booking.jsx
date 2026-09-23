@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
@@ -747,6 +747,182 @@ export default function Booking() {
     )
   }
 
+  // Wird direkt nach der jeweils ausgewählten Kachel eingefügt (siehe
+  // primaerKurse/komboKurse/pakete weiter unten) statt gesammelt erst nach
+  // ALLEN Kacheln - sonst muss man nach der Auswahl (besonders am Handy)
+  // erst an allen weiteren Kacheln vorbeiscrollen, bis das Anmeldeformular
+  // auftaucht, und es wirkt so, als sei beim Antippen nichts passiert oder
+  // der Kurs gar nicht mehr buchbar.
+  const anmeldeFormular = (selectedCourse || selectedPaket) && (
+    <>
+      <div className={styles.details}>
+        <h3>{selectedPaket ? selectedPaket.name : selectedCourse.name}</h3>
+        {selectedPaket ? (
+          <>
+            {[selectedPaket.kurs1, selectedPaket.kurs2].map((k) => (
+              <div key={k.id} style={{ marginBottom: '10px' }}>
+                <span className={styles.datesBig}>
+                  {getCourseTypeBySlug(k.course_type)?.label || k.course_type} — {k.termine} Termine à {k.dauer_min} mins
+                </span>
+                {k.termin_daten && k.termin_daten.length > 0 && (
+                  <div className={styles.terminListe}>
+                    {k.termin_daten.map((datum) => (
+                      <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            <span className={styles.price}>
+              €{effektivPreisPaket} (Paketpreis)
+              {effektivPreisPaket < Number(selectedPaket.preis) && (
+                <span className={styles.termineText}>
+                  {' '}– Preis passt sich der Anzahl verbleibender Stunden an
+                </span>
+              )}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className={styles.datesBig}>{selectedCourse.termine} Termine à {selectedCourse.dauer_min} mins</span>
+            {selectedCourse.termin_daten && selectedCourse.termin_daten.length > 0 ? (
+              <div className={styles.terminListe}>
+                {selectedCourse.termin_daten.map((datum) => (
+                  <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
+                ))}
+              </div>
+            ) : (
+              selectedCourse.start_datum && selectedCourse.end_datum && (
+                <span className={styles.datesBig}>
+                  {new Date(selectedCourse.start_datum).toLocaleDateString('de-DE')} – {new Date(selectedCourse.end_datum).toLocaleDateString('de-DE')}
+                </span>
+              )
+            )}
+            <span className={styles.price}>
+              {zeigeKombiWunsch && extra.kombiWunsch ? (
+                'Preis siehe Anmeldung'
+              ) : (
+                <>
+                  €{effektivPreisKurs}
+                  {rabattiertKurs && (
+                    <span className={styles.termineText}>{' '}statt €{selectedCourse.preis}</span>
+                  )}
+                  {rabattiertKurs && selectedCourse.rabatt_hinweis && (
+                    <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
+                  )}
+                  {effektivPreisKurs < grundpreisKurs && (
+                    <span className={styles.termineText}>
+                      {' '}– Preis passt sich der Anzahl verbleibender Stunden an
+                    </span>
+                  )}
+                </>
+              )}
+            </span>
+          </>
+        )}
+      </div>
+
+      <form className={styles.form} onSubmit={handleSubmit}>
+        {zeigeKombiWunsch && (
+          <KombiWunschSection
+            values={extra}
+            onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+            kombiWunschPreis={kombiWunschPreis}
+            normalPreis={effektivPreisKurs}
+          />
+        )}
+
+        <div className={styles.section}>
+          <h3>Deine Angaben</h3>
+          <div className={styles.row}>
+            <div className={styles.group}>
+              <label>Vorname *</label>
+              <input type="text" required value={general.vorname} onChange={(e) => setGeneral({ ...general, vorname: e.target.value })} />
+            </div>
+            <div className={styles.group}>
+              <label>Nachname *</label>
+              <input type="text" required value={general.nachname} onChange={(e) => setGeneral({ ...general, nachname: e.target.value })} />
+            </div>
+          </div>
+          <div className={styles.row}>
+            <div className={styles.group}>
+              <label>Email-Adresse *</label>
+              <input type="email" required value={general.email} onChange={(e) => setGeneral({ ...general, email: e.target.value })} />
+            </div>
+            <div className={styles.group}>
+              <label>Telefonnummer *</label>
+              <input type="tel" required value={general.telefon} onChange={(e) => setGeneral({ ...general, telefon: e.target.value })} />
+            </div>
+          </div>
+          <div className={`${styles.row} ${styles.rowFull}`}>
+            <div className={styles.group}>
+              <label>Straße & Hausnummer *</label>
+              <input type="text" required value={general.strasse} onChange={(e) => setGeneral({ ...general, strasse: e.target.value })} />
+            </div>
+          </div>
+          <div className={styles.row}>
+            <div className={styles.group}>
+              <label>PLZ *</label>
+              <input type="text" required value={general.plz} onChange={(e) => setGeneral({ ...general, plz: e.target.value })} />
+            </div>
+            <div className={styles.group}>
+              <label>Ort *</label>
+              <input type="text" required value={general.ort} onChange={(e) => setGeneral({ ...general, ort: e.target.value })} />
+            </div>
+          </div>
+          <div className={styles.checkboxGroup}>
+            <input type="checkbox" id="dsgvo" required checked={general.dsgvo} onChange={(e) => setGeneral({ ...general, dsgvo: e.target.checked })} />
+            <label htmlFor="dsgvo">Ich habe die Datenschutzerklärung gelesen und akzeptiert *</label>
+          </div>
+          <div className={styles.checkboxGroup}>
+            <input type="checkbox" id="antirassismus" required checked={general.antirassismus} onChange={(e) => setGeneral({ ...general, antirassismus: e.target.checked })} />
+            <label htmlFor="antirassismus">
+              Ich bekenne mich zu einem respektvollen, diskriminierungsfreien Miteinander und lehne
+              Rassismus in jeder Form ab *
+            </label>
+          </div>
+        </div>
+
+        <GutscheinSection
+          values={gutschein}
+          onChange={(field, value) => setGutschein({ ...gutschein, [field]: value })}
+          foto={gutscheinFoto}
+          onFotoChange={setGutscheinFoto}
+          kursbetrag={selectedPaket ? effektivPreisPaket : effektivPreisKurs}
+        />
+
+        {selectedPaket ? (
+          <>
+            <ExtraFields
+              courseTypeSlug={selectedPaket.kurs1.course_type}
+              values={extra}
+              onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+            />
+            {selectedPaket.kurs2.course_type !== selectedPaket.kurs1.course_type && (
+              <ExtraFields
+                courseTypeSlug={selectedPaket.kurs2.course_type}
+                values={extra}
+                onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+              />
+            )}
+          </>
+        ) : (
+          <ExtraFields
+            courseTypeSlug={selectedCourse.course_type}
+            values={extra}
+            onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+          />
+        )}
+
+        {submitError && <p className={styles.empty}>{submitError}</p>}
+
+        <button type="submit" className={styles.submitButton} disabled={submitting}>
+          {submitting ? 'Wird gesendet …' : 'Anmeldung absenden'}
+        </button>
+      </form>
+    </>
+  )
+
   return (
     <div className={styles.container}>
       <div className={styles.logoHeader}>
@@ -760,206 +936,42 @@ export default function Booking() {
           <p className={styles.emptyLight}>Aktuell sind keine {courseType.label}-Kurse zur Anmeldung freigegeben.</p>
         )}
         {primaerKurse.map((c) => (
-          <TerminBox
-            key={c.id}
-            course={c}
-            label={wochentagVonKurs(c)}
-            spotsLeft={spotsLeftFuer(c)}
-            selected={selectedId === c.id}
-            onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
-          />
+          <Fragment key={c.id}>
+            <TerminBox
+              course={c}
+              label={wochentagVonKurs(c)}
+              spotsLeft={spotsLeftFuer(c)}
+              selected={selectedId === c.id}
+              onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
+            />
+            {selectedId === c.id && anmeldeFormular}
+          </Fragment>
         ))}
         {komboKurse.map((c) => (
-          <TerminBox
-            key={c.id}
-            course={c}
-            label="Kombi-Kurse"
-            comboLabel={getCourseTypeBySlug(c.course_type)?.label || c.course_type}
-            spotsLeft={spotsLeftFuer(c)}
-            selected={selectedId === c.id}
-            onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
-          />
+          <Fragment key={c.id}>
+            <TerminBox
+              course={c}
+              label="Kombi-Kurse"
+              comboLabel={getCourseTypeBySlug(c.course_type)?.label || c.course_type}
+              spotsLeft={spotsLeftFuer(c)}
+              selected={selectedId === c.id}
+              onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
+            />
+            {selectedId === c.id && anmeldeFormular}
+          </Fragment>
         ))}
         {pakete.map((p) => (
-          <PaketBox
-            key={p.id}
-            paket={p}
-            spotsLeft={spotsLeftFuerPaket(p)}
-            selected={selectedPaketId === p.id}
-            onSelect={(id) => { setSelectedPaketId(id); setSelectedId('') }}
-          />
+          <Fragment key={p.id}>
+            <PaketBox
+              paket={p}
+              spotsLeft={spotsLeftFuerPaket(p)}
+              selected={selectedPaketId === p.id}
+              onSelect={(id) => { setSelectedPaketId(id); setSelectedId('') }}
+            />
+            {selectedPaketId === p.id && anmeldeFormular}
+          </Fragment>
         ))}
       </div>
-
-      {(selectedCourse || selectedPaket) && (
-        <>
-          <div className={styles.details}>
-            <h3>{selectedPaket ? selectedPaket.name : selectedCourse.name}</h3>
-            {selectedPaket ? (
-              <>
-                {[selectedPaket.kurs1, selectedPaket.kurs2].map((k) => (
-                  <div key={k.id} style={{ marginBottom: '10px' }}>
-                    <span className={styles.datesBig}>
-                      {getCourseTypeBySlug(k.course_type)?.label || k.course_type} — {k.termine} Termine à {k.dauer_min} mins
-                    </span>
-                    {k.termin_daten && k.termin_daten.length > 0 && (
-                      <div className={styles.terminListe}>
-                        {k.termin_daten.map((datum) => (
-                          <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <span className={styles.price}>
-                  €{effektivPreisPaket} (Paketpreis)
-                  {effektivPreisPaket < Number(selectedPaket.preis) && (
-                    <span className={styles.termineText}>
-                      {' '}– Preis passt sich der Anzahl verbleibender Stunden an
-                    </span>
-                  )}
-                </span>
-              </>
-            ) : (
-              <>
-                <span className={styles.datesBig}>{selectedCourse.termine} Termine à {selectedCourse.dauer_min} mins</span>
-                {selectedCourse.termin_daten && selectedCourse.termin_daten.length > 0 ? (
-                  <div className={styles.terminListe}>
-                    {selectedCourse.termin_daten.map((datum) => (
-                      <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
-                    ))}
-                  </div>
-                ) : (
-                  selectedCourse.start_datum && selectedCourse.end_datum && (
-                    <span className={styles.datesBig}>
-                      {new Date(selectedCourse.start_datum).toLocaleDateString('de-DE')} – {new Date(selectedCourse.end_datum).toLocaleDateString('de-DE')}
-                    </span>
-                  )
-                )}
-                <span className={styles.price}>
-                  {zeigeKombiWunsch && extra.kombiWunsch ? (
-                    'Preis siehe Anmeldung'
-                  ) : (
-                    <>
-                      €{effektivPreisKurs}
-                      {rabattiertKurs && (
-                        <span className={styles.termineText}>{' '}statt €{selectedCourse.preis}</span>
-                      )}
-                      {rabattiertKurs && selectedCourse.rabatt_hinweis && (
-                        <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
-                      )}
-                      {effektivPreisKurs < grundpreisKurs && (
-                        <span className={styles.termineText}>
-                          {' '}– Preis passt sich der Anzahl verbleibender Stunden an
-                        </span>
-                      )}
-                    </>
-                  )}
-                </span>
-              </>
-            )}
-          </div>
-
-          <form className={styles.form} onSubmit={handleSubmit}>
-            {zeigeKombiWunsch && (
-              <KombiWunschSection
-                values={extra}
-                onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-                kombiWunschPreis={kombiWunschPreis}
-                normalPreis={effektivPreisKurs}
-              />
-            )}
-
-            <div className={styles.section}>
-              <h3>Deine Angaben</h3>
-              <div className={styles.row}>
-                <div className={styles.group}>
-                  <label>Vorname *</label>
-                  <input type="text" required value={general.vorname} onChange={(e) => setGeneral({ ...general, vorname: e.target.value })} />
-                </div>
-                <div className={styles.group}>
-                  <label>Nachname *</label>
-                  <input type="text" required value={general.nachname} onChange={(e) => setGeneral({ ...general, nachname: e.target.value })} />
-                </div>
-              </div>
-              <div className={styles.row}>
-                <div className={styles.group}>
-                  <label>Email-Adresse *</label>
-                  <input type="email" required value={general.email} onChange={(e) => setGeneral({ ...general, email: e.target.value })} />
-                </div>
-                <div className={styles.group}>
-                  <label>Telefonnummer *</label>
-                  <input type="tel" required value={general.telefon} onChange={(e) => setGeneral({ ...general, telefon: e.target.value })} />
-                </div>
-              </div>
-              <div className={`${styles.row} ${styles.rowFull}`}>
-                <div className={styles.group}>
-                  <label>Straße & Hausnummer *</label>
-                  <input type="text" required value={general.strasse} onChange={(e) => setGeneral({ ...general, strasse: e.target.value })} />
-                </div>
-              </div>
-              <div className={styles.row}>
-                <div className={styles.group}>
-                  <label>PLZ *</label>
-                  <input type="text" required value={general.plz} onChange={(e) => setGeneral({ ...general, plz: e.target.value })} />
-                </div>
-                <div className={styles.group}>
-                  <label>Ort *</label>
-                  <input type="text" required value={general.ort} onChange={(e) => setGeneral({ ...general, ort: e.target.value })} />
-                </div>
-              </div>
-              <div className={styles.checkboxGroup}>
-                <input type="checkbox" id="dsgvo" required checked={general.dsgvo} onChange={(e) => setGeneral({ ...general, dsgvo: e.target.checked })} />
-                <label htmlFor="dsgvo">Ich habe die Datenschutzerklärung gelesen und akzeptiert *</label>
-              </div>
-              <div className={styles.checkboxGroup}>
-                <input type="checkbox" id="antirassismus" required checked={general.antirassismus} onChange={(e) => setGeneral({ ...general, antirassismus: e.target.checked })} />
-                <label htmlFor="antirassismus">
-                  Ich bekenne mich zu einem respektvollen, diskriminierungsfreien Miteinander und lehne
-                  Rassismus in jeder Form ab *
-                </label>
-              </div>
-            </div>
-
-            <GutscheinSection
-              values={gutschein}
-              onChange={(field, value) => setGutschein({ ...gutschein, [field]: value })}
-              foto={gutscheinFoto}
-              onFotoChange={setGutscheinFoto}
-              kursbetrag={selectedPaket ? effektivPreisPaket : effektivPreisKurs}
-            />
-
-            {selectedPaket ? (
-              <>
-                <ExtraFields
-                  courseTypeSlug={selectedPaket.kurs1.course_type}
-                  values={extra}
-                  onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-                />
-                {selectedPaket.kurs2.course_type !== selectedPaket.kurs1.course_type && (
-                  <ExtraFields
-                    courseTypeSlug={selectedPaket.kurs2.course_type}
-                    values={extra}
-                    onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-                  />
-                )}
-              </>
-            ) : (
-              <ExtraFields
-                courseTypeSlug={selectedCourse.course_type}
-                values={extra}
-                onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-              />
-            )}
-
-            {submitError && <p className={styles.empty}>{submitError}</p>}
-
-            <button type="submit" className={styles.submitButton} disabled={submitting}>
-              {submitting ? 'Wird gesendet …' : 'Anmeldung absenden'}
-            </button>
-          </form>
-        </>
-      )}
     </div>
   )
 }
