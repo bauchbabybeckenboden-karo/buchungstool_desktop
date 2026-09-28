@@ -1,92 +1,27 @@
-
-Claude hat die Antwort abgeschlossen
-Nicht ganz. Ich bin keine Rechtsberaterin, aber:
-
-Für die Wirksamkeit der AGB reicht ein Haken bei "AGB gelesen und akzeptiert" in der Regel aus, sofern der Link direkt daneben steht und die AGB vor der Buchung einsehbar sind.
-
-Für den Ausschluss des Widerrufsrechts ist das riskanter. Wenn du dich auf § 312g Abs. 2 Nr. 9 BGB berufst, solltest du das im Buchungsprozess sichtbar machen, nicht nur in den AGB versteckt. Denn bei Streit musst du beweisen, dass die Kundin vorab informiert war.
-
-Empfehlung, kurz:
-
-Der AGB-Haken bleibt.
-Direkt darunter ein Hinweis in einem Satz, z. B.: "Für gebuchte Termine besteht kein Widerrufsrecht (§ 312g Abs. 2 Nr. 9 BGB), die Buchung ist verbindlich."
-Bei Trageberatung und Trageverleih zusätzlich getrennt regeln, weil dort die Ausnahme unsicher ist bzw. das Widerrufsrecht gilt.
-Ein zweiter Haken ist nicht zwingend, aber der sicherste Weg, wenn du es nachweisen können willst.
-
-Locating the registration form within the repository structure.
-Locating the registration form within the repository structure.
-Der Code für das Anmeldeformular liegt sehr wahrscheinlich im Ordner src. Der letzte Commit dort heißt "Anmeldeformular direkt unter der ausgewählten Kachel anzeigen", und das Projekt ist eine Vite-App, deren Formular-Code immer in src liegt. Die index.html im Hauptordner ist dagegen nur die Hülle.
-
-Was du tun musst:
-
-Öffne den Ordner src und mach einen Screenshot der Dateiliste.
-Schick mir dann die Datei, in der das Anmeldeformular steckt (vermutlich eine .jsx-Datei, z. B. App.jsx oder etwas mit "Anmeldung" oder "Formular" im Namen). Wenn du unsicher bist, schick die Screenshot-Liste, dann sage ich dir genau, welche.
-Wenn die Datei sehr lang ist, reicht es auch, sie hier hochzuladen statt zu kopieren.
-
-1790588306115_image.png
-Der Commit "Anmeldeformular direkt unter der ausgewählten Kachel anzeigen" liegt im Ordner pages. Öffne diesen Ordner und schick mir einen Screenshot der Dateiliste.
-
-Falls dort mehrere Seiten liegen, lade mir alle hoch, in denen ein Anmeldeformular vorkommt. Vermutlich reicht die Datei mit dem Kursbuchungs-Formular (zum Beispiel mit "Booking" oder "Anmeldung" im Namen). Zusätzlich könnte im Ordner components ein Formular-Baustein liegen. Der Screenshot von pages zeigt uns, was zuerst dran ist.
-
-1790588385410_image.png
-Das ist Booking.jsx (Pfad: src/pages/Booking.jsx). Der letzte Commit dort ist "Anmeldeformular direkt unter der ausgewählten Kachel anzeigen".
-
-Lade mir diese Datei hier hoch. Falls die Datei ein separates Formular-Bauteil aus dem Ordner components einbindet, sage ich dir danach Bescheid, welche zweite Datei ich noch brauche.
-
-
-import { Fragment, useEffect, useState } from 'react' import { useParams } from 'react-router-dom' import styles from './Booking.module.css' import { getCourseTypeBySlug } from '../courseTypes.js' import { supabase } from '../supabase.js' import { reduzierterPreis, effektiverGrundpreis, vergang
-
-pasted
-
-Datei erstellt, dateien geteilt
-Das ist die komplette Booking.jsx zum 1:1-Ersetzen in src/pages/.
-
-Geändert:
-
-Neuer Pflicht-Haken direkt unter der Datenschutzerklärung: "Ich habe die AGB gelesen, insbesondere die Hinweise zu Verbindlichkeit der Buchung und Stornierung, und akzeptiere sie *". "AGB" ist ein Link, der in einem neuen Tab öffnet.
-Die Zustimmung wird als Nachweis in der Buchung gespeichert (Feld zusatzfelder, Eintrag agbAkzeptiert). Du musst dafür nichts in Supabase anlegen.
-Zu prüfen:
-
-Der AGB-Link ist https://www.bauch-baby-beckenboden.de/agb/. Falls deine AGB-Seite anders heißt, ersetze den Link in der Zeile mit id="agb".
-Der Haken gilt automatisch für alle Kursarten, auch für Kombi-Pakete. Trageberatung ist nicht betroffen, da sie hier nicht vorkommt.
-Ich nehme an, dass die Mail-Funktion zusatzfelder nicht Zeile für Zeile ausgibt. Falls in deiner Admin-Mail plötzlich "agbAkzeptiert" auftaucht, sag Bescheid, dann passe ich send-booking-emails.mjs an.
-
-Fehlt noch etwas, oder soll ich etwas ergänzen? Ein Vorschlag: Die AGB müssen live sein (§ 3 und § 4), bevor du diese beiden Dateien hochlädst, sonst verweist der Haken auf alte Regeln.
-
-
-Booking
-Code·JSX 
-
-
-
-Claude ist eine KI und kann Fehler machen.
-
-
-Booking · JSX
 import { Fragment, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine } from '../pricing.js'
- 
+
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
   const [jahr, monat, tag] = isoDatum.split('-')
   return `${tag}.${monat}.${jahr}`
 }
- 
+
 // Kurzformat ohne Jahr, z.B. "23.10." - fürs Aneinanderreihen mehrerer Termine.
 function formatDatumKurz(isoDatum) {
   if (!isoDatum) return ''
   const [, monat, tag] = isoDatum.split('-')
   return `${tag}.${monat}.`
 }
- 
+
 const WOCHENTAGE_PLURAL = [
   'Sonntags', 'Montags', 'Dienstags', 'Mittwochs', 'Donnerstags', 'Freitags', 'Samstags',
 ]
- 
+
 // Ermittelt den Wochentag (als "Freitags" o.ä.) aus dem ersten Einzeltermin
 // bzw. dem Start-Datum eines Kurses, für die kleine Beschriftung über jeder
 // Termin-Kachel.
@@ -96,7 +31,7 @@ function wochentagVonKurs(course) {
   const tag = new Date(datum + 'T00:00:00').getDay()
   return WOCHENTAGE_PLURAL[tag] || ''
 }
- 
+
 // "23.10., 30.10., 13.11., 20.11. & 27.11.2026" - alle bis auf den letzten
 // Termin kurz (ohne Jahr), der letzte mit vollem Jahr und "&" davor.
 function formatTerminlisteKurz(dates) {
@@ -106,13 +41,13 @@ function formatTerminlisteKurz(dates) {
   const letzter = formatDatumDE(dates[dates.length - 1])
   return `${vorherige} & ${letzter}`
 }
- 
+
 function terminDatenOderRange(course) {
   if (course.termin_daten && course.termin_daten.length > 0) return course.termin_daten
   if (course.start_datum && course.end_datum) return [course.start_datum, course.end_datum]
   return []
 }
- 
+
 // Eine einzelne Termin-Kachel im Stil von Karos bisheriger, von Hand
 // gepflegter Setmore-Einbindung (Tabler-Icons, "Wenige Plätze
 // verfügbar"-Hinweis, Pin + Terminliste) - hier automatisch aus den
@@ -130,7 +65,7 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   // klar, dass man hier später einsteigt statt von Anfang an dabei zu sein.
   const bereitsGestartet = vergangeneTermine(course) > 0
   const beschriftung = label ? `${label} · ${course.name}` : course.name
- 
+
   let titelText
   let istWarnung = false
   if (comboLabel) {
@@ -152,10 +87,10 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   } else {
     titelText = zeitpunkt
   }
- 
+
   const ausgebucht = spotsLeft !== null && spotsLeft <= 0
   const terminliste = formatTerminlisteKurz(terminDatenOderRange(course))
- 
+
   // Grundpreis: entweder Karos manuell gesetzter Rabattpreis (falls für den
   // Kurs aktiviert) oder der normale Listenpreis. Wer erst nach Kursbeginn
   // bucht, zahlt zusätzlich nur noch für die verbleibenden Termine (siehe
@@ -166,12 +101,12 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   const effektivPreis = reduzierterPreis(grundpreis, course)
   const rabattiert = grundpreis < Number(course.preis)
   const spaeterReduziert = effektivPreis < grundpreis
- 
+
   const klassen = [styles.termineBox]
   if (istWarnung) klassen.push(styles.termineBoxHighlight)
   if (selected) klassen.push(styles.termineBoxSelected)
   if (ausgebucht) klassen.push(styles.termineBoxDisabled)
- 
+
   return (
     <div
       className={klassen.join(' ')}
@@ -205,19 +140,19 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
     </div>
   )
 }
- 
+
 // Kachel für ein Kombi-Paket (zwei eigenständige Kurse zu einer Buchung
 // gebündelt) - im selben Kachel-Stil wie TerminBox, listet aber beide
 // zugrundeliegenden Kurstermine untereinander auf.
 function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   const ausgebucht = spotsLeft !== null && spotsLeft <= 0
   const wenigePlaetze = !ausgebucht && spotsLeft !== null && spotsLeft <= 3
- 
+
   // Reduzierung gilt für beide gebündelten Kurse einzeln - wer erst nach
   // Beginn eines oder beider Kurse bucht, zahlt entsprechend weniger.
   const effektivPreis = reduzierterPreis(paket.preis, paket.kurs1, paket.kurs2)
   const reduziert = effektivPreis < Number(paket.preis)
- 
+
   let titelText = paket.name
   if (ausgebucht) titelText = `Ausgebucht — ${paket.name}`
   // Freie Plätze durchgängig anzeigen, nicht erst ab wenigen Plätzen (siehe
@@ -226,12 +161,12 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   else if (spotsLeft !== null) {
     titelText = `${paket.name} · noch ${spotsLeft} ${spotsLeft === 1 ? 'Platz' : 'Plätze'} frei`
   }
- 
+
   const klassen = [styles.termineBox]
   if (wenigePlaetze) klassen.push(styles.termineBoxHighlight)
   if (selected) klassen.push(styles.termineBoxSelected)
   if (ausgebucht) klassen.push(styles.termineBoxDisabled)
- 
+
   function kursZeile(kurs) {
     const datum = kurs.termin_daten?.[0] || kurs.start_datum
     const terminliste = formatTerminlisteKurz(terminDatenOderRange(kurs))
@@ -243,7 +178,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
       </p>
     )
   }
- 
+
   return (
     <div
       className={klassen.join(' ')}
@@ -265,7 +200,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
     </div>
   )
 }
- 
+
 function ExtraFields({ courseTypeSlug, values, onChange }) {
   if (courseTypeSlug === 'schwangerfit') {
     return (
@@ -302,7 +237,7 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
       </div>
     )
   }
- 
+
   if (courseTypeSlug === 'somatic-yoga') {
     return (
       <div className={styles.section}>
@@ -330,7 +265,7 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
       </div>
     )
   }
- 
+
   if (courseTypeSlug === 'koerpermitte-beckenboden') {
     return (
       <div className={styles.section}>
@@ -363,10 +298,10 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
       </div>
     )
   }
- 
+
   return null
 }
- 
+
 // Wird bei JEDER Einzelkurs-Auswahl angezeigt (egal ob Kombi-Kurs-Kachel auf
 // einer "fremden" Seite, z.B. "PLUS Körpermitte & Beckenboden", oder ein ganz
 // normaler Kurs derselben Kursart wie z.B. ein zweiter Schwangerfit-Termin an
@@ -404,7 +339,7 @@ function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis })
     </div>
   )
 }
- 
+
 // Gutschein-Angabe: unabhängig von Kurs/Kombi-Wunsch verfügbar. Bei
 // Ankreuzen erscheinen Betragsfeld + Foto-Upload sowie Karos Hinweistext
 // mit Überweisungsanleitung. Das Foto landet direkt in der Buchung
@@ -459,18 +394,18 @@ function GutscheinSection({ values, onChange, foto, onFotoChange, kursbetrag }) 
     </div>
   )
 }
- 
+
 const initialGeneral = {
   vorname: '', nachname: '', email: '', telefon: '', strasse: '', plz: '', ort: '',
   dsgvo: false, agb: false, antirassismus: false,
 }
- 
+
 const initialGutschein = { hatGutschein: false, gutscheinBetrag: '' }
- 
+
 export default function Booking() {
   const { courseTypeSlug } = useParams()
   const courseType = getCourseTypeBySlug(courseTypeSlug)
- 
+
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -485,7 +420,7 @@ export default function Booking() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
- 
+
   // Meldet die tatsächliche Seitenhöhe an ein einbettendes iFrame auf der
   // Homepage, damit dieses sich automatisch anpasst (die Buchungsseite
   // wird länger, sobald ein Kurs ausgewählt ist oder ein Fehler
@@ -504,7 +439,7 @@ export default function Booking() {
     observer.observe(document.documentElement)
     return () => observer.disconnect()
   }, [])
- 
+
   useEffect(() => {
     if (!courseType) return
     let active = true
@@ -523,7 +458,7 @@ export default function Booking() {
       })
     return () => { active = false }
   }, [courseTypeSlug, courseType])
- 
+
   // Kombi-Pakete laden, die diese Kursseite betreffen (einer der beiden
   // gebündelten Kurse gehört zu diesem Kurstyp). Da kurs_id_1/kurs_id_2 auf
   // beliebige, unabhängige Kurse verweisen können (auch auf einen anderen
@@ -559,7 +494,7 @@ export default function Booking() {
       })
     return () => { active = false }
   }, [courseTypeSlug])
- 
+
   // Belegungszahlen laden, um "noch X Plätze frei" / "Vor Ort ausgebucht" auf
   // den Termin- und Paket-Kacheln anzuzeigen. Bei Kombi-Paketen zählt der
   // jeweils knappere der beiden zugrundeliegenden Kurse.
@@ -588,10 +523,10 @@ export default function Booking() {
       })
     return () => { active = false }
   }, [])
- 
+
   const selectedCourse = courses.find((c) => c.id === selectedId)
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
- 
+
   // Effektiver (ggf. rabattierter und/oder reduzierter) Preis für die aktuelle
   // Auswahl - wird für Anzeige UND die verschickte Bestätigungsmail verwendet,
   // damit beide übereinstimmen (siehe pricing.js: effektiverGrundpreis,
@@ -602,7 +537,7 @@ export default function Booking() {
   const effektivPreisPaket = selectedPaket
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
     : null
- 
+
   // Die Kombi-Wunsch-Option ("ich bin schon bei einem laufenden Kurs
   // angemeldet") gilt für JEDE Einzelkurs-Auswahl - egal ob es sich um eine
   // Zusatzoption auf einer "fremden" Seite handelt (z.B. "PLUS Körpermitte &
@@ -612,7 +547,7 @@ export default function Booking() {
   // (selectedPaket), die sind als EINE gemeinsame Neu-Buchung zweier Kurse
   // schon ihr eigener Mechanismus.
   const zeigeKombiWunsch = Boolean(selectedCourse)
- 
+
   // Kombi-Wunsch-Preis: pauschal 10% auf den ohnehin angezeigten Preis des
   // PLUS-Kurses, aufgerundet auf den vollen Euro - NICHT auf den bereits
   // laufenden Kurs, den bekommt die Teilnehmerin ja schon zum normalen Preis.
@@ -621,7 +556,7 @@ export default function Booking() {
   // Bestätigung, ob die Teilnehmerin tatsächlich im anderen Kurs angemeldet
   // ist, passiert serverseitig beim Mailversand (send-booking-emails.mjs).
   const kombiWunschPreis = zeigeKombiWunsch ? Math.ceil(effektivPreisKurs * 0.9) : null
- 
+
   // Online-Kurse sollen in jeder Liste immer ganz unten stehen, hinter den
   // Präsenzterminen - Array.sort ist stabil, die sonstige Reihenfolge (nach
   // created_at aus der Datenbank-Abfrage) bleibt innerhalb der beiden
@@ -629,18 +564,18 @@ export default function Booking() {
   function onlineZuletzt(a, b) {
     return (a.ist_online ? 1 : 0) - (b.ist_online ? 1 : 0)
   }
- 
+
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
   const primaerKurse = courses.filter((c) => c.course_type === courseTypeSlug).sort(onlineZuletzt)
   const komboKurse = courses.filter((c) => c.course_type !== courseTypeSlug).sort(onlineZuletzt)
- 
+
   function spotsLeftFuer(course) {
     if (!course.max_teilnehmerinnen) return null
     return course.max_teilnehmerinnen - (bookingCounts[course.id] || 0)
   }
- 
+
   // Ein Kombi-Paket ist so lange buchbar, wie in BEIDEN zugrundeliegenden
   // Kursen noch ein Platz frei ist - eine Anmeldung belegt ja in jedem der
   // beiden Kurse einen Platz.
@@ -652,11 +587,11 @@ export default function Booking() {
     if (rechts === null) return links
     return Math.min(links, rechts)
   }
- 
+
   if (!courseType) {
     return <div className={styles.container}>Unbekannter Kurstyp.</div>
   }
- 
+
   // Auf dem Handy (v.a. mobiles Netz) kann eine einzelne Anfrage mal kurz
   // hängen bleiben - bevor wir der Nutzerin einen Fehler anzeigen, probieren
   // wir es nach einer kurzen Pause automatisch noch einmal. Fehler werden
@@ -679,11 +614,11 @@ export default function Booking() {
     }
     return { error }
   }
- 
+
   function fehlermeldung(error) {
     return `Die Anmeldung konnte nicht gesendet werden. Bitte versuch es erneut. (${error?.message || 'unbekannter Fehler'})`
   }
- 
+
   // Lädt das Gutschein-Foto in den öffentlichen "gutschein-fotos"-Storage-
   // Bucket hoch (läuft, wie die Buchung selbst, ohne Login mit dem
   // öffentlichen anon-Key) und gibt die öffentliche URL zurück - die landet
@@ -698,12 +633,12 @@ export default function Booking() {
     const { data } = supabase.storage.from('gutschein-fotos').getPublicUrl(pfad)
     return { url: data.publicUrl }
   }
- 
+
   async function handleSubmit(e) {
     e.preventDefault()
     setSubmitting(true)
     setSubmitError(null)
- 
+
     let gutscheinFotoUrl = null
     if (gutschein.hatGutschein) {
       if (!gutscheinFoto) {
@@ -719,13 +654,13 @@ export default function Booking() {
       }
       gutscheinFotoUrl = url
     }
- 
+
     // Die AGB-Zustimmung wird als Nachweis mit in "zusatzfelder" gespeichert
     // (JSON-Spalte, keine neue Datenbank-Spalte nötig).
     const basisZusatzfelder = extra.kombiWunsch
       ? { ...extra, kombiPreisGeschaetzt: kombiWunschPreis ?? null }
       : extra
- 
+
     const basisDaten = {
       vorname: general.vorname,
       nachname: general.nachname,
@@ -741,13 +676,13 @@ export default function Booking() {
       gutschein_betrag: gutschein.hatGutschein ? Number(gutschein.gutscheinBetrag) : null,
       gutschein_foto_url: gutscheinFotoUrl,
     }
- 
+
     // Für die Admin-Mail (send-booking-emails.mjs) - dort liegt kein Zugriff
     // auf `basisDaten`/`gutscheinFotoUrl` vor, deshalb separat mitgeschickt.
     const gutscheinFuerMail = gutschein.hatGutschein
       ? { betrag: Number(gutschein.gutscheinBetrag), fotoUrl: gutscheinFotoUrl }
       : null
- 
+
     // Ein Kombi-Paket erzeugt EINE Anmeldung, landet aber technisch als
     // zwei verknüpfte Zeilen in "buchungen" (eine pro zugrundeliegendem
     // Kurs) - dadurch taucht die Teilnehmerin ganz normal in beiden
@@ -763,16 +698,16 @@ export default function Booking() {
         { ...basisDaten, kurs_id: selectedPaket.kurs1.id, paket_id: selectedPaket.id },
         { ...basisDaten, kurs_id: selectedPaket.kurs2.id, paket_id: selectedPaket.id },
       ])
- 
+
       if (error) {
         setSubmitting(false)
         setSubmitError(fehlermeldung(error))
         return
       }
- 
+
       setSubmitting(false)
       setSubmitted(true)
- 
+
       fetch('/.netlify/functions/send-booking-emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -784,16 +719,16 @@ export default function Booking() {
       }).catch(() => {})
       return
     }
- 
+
     const { error } = await insertBuchungMitRetry({ ...basisDaten, kurs_id: selectedCourse.id })
- 
+
     setSubmitting(false)
     if (error) {
       setSubmitError(fehlermeldung(error))
       return
     }
     setSubmitted(true)
- 
+
     // E-Mails verschicken (Bestätigung an Teilnehmerin + Benachrichtigung an Karo).
     // Ein Fehler hier soll die bereits erfolgreiche Anmeldung nicht mehr beeinflussen.
     fetch('/.netlify/functions/send-booking-emails', {
@@ -806,7 +741,7 @@ export default function Booking() {
       }),
     }).catch(() => {})
   }
- 
+
   if (submitted) {
     return (
       <div className={styles.container}>
@@ -817,7 +752,7 @@ export default function Booking() {
       </div>
     )
   }
- 
+
   // Wird direkt nach der jeweils ausgewählten Kachel eingefügt (siehe
   // primaerKurse/komboKurse/pakete weiter unten) statt gesammelt erst nach
   // ALLEN Kacheln - sonst muss man nach der Auswahl (besonders am Handy)
@@ -892,7 +827,7 @@ export default function Booking() {
           </>
         )}
       </div>
- 
+
       <form className={styles.form} onSubmit={handleSubmit}>
         {zeigeKombiWunsch && (
           <KombiWunschSection
@@ -902,7 +837,7 @@ export default function Booking() {
             normalPreis={effektivPreisKurs}
           />
         )}
- 
+
         <div className={styles.section}>
           <h3>Deine Angaben</h3>
           <div className={styles.row}>
@@ -962,7 +897,7 @@ export default function Booking() {
             </label>
           </div>
         </div>
- 
+
         <GutscheinSection
           values={gutschein}
           onChange={(field, value) => setGutschein({ ...gutschein, [field]: value })}
@@ -970,7 +905,7 @@ export default function Booking() {
           onFotoChange={setGutscheinFoto}
           kursbetrag={selectedPaket ? effektivPreisPaket : effektivPreisKurs}
         />
- 
+
         {selectedPaket ? (
           <>
             <ExtraFields
@@ -993,22 +928,22 @@ export default function Booking() {
             onChange={(field, value) => setExtra({ ...extra, [field]: value })}
           />
         )}
- 
+
         {submitError && <p className={styles.empty}>{submitError}</p>}
- 
+
         <button type="submit" className={styles.submitButton} disabled={submitting}>
           {submitting ? 'Wird gesendet …' : 'Anmeldung absenden'}
         </button>
       </form>
     </>
   )
- 
+
   return (
     <div className={styles.container}>
       <div className={styles.logoHeader}>
         <img src="/logo.png" alt="Bauch · Baby · Beckenboden" className={styles.logo} />
       </div>
- 
+
       <div className={styles.termineSection}>
         {loading && <p className={styles.emptyLight}>Lade Kurse …</p>}
         {loadError && <p className={styles.emptyLight}>Kurse konnten nicht geladen werden.</p>}
@@ -1055,8 +990,3 @@ export default function Booking() {
     </div>
   )
 }
- 
-
-
-
-
