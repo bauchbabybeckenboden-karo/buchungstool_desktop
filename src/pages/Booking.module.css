@@ -75,7 +75,7 @@
 }
 
 .termineBoxSelected {
-  border: 1.5px solid #f5ede8;
+  border: 1.5px solid #F6EBE8;
   background: rgba(245, 237, 232, 0.32);
 }
 
@@ -91,7 +91,7 @@
 .termineIcon {
   font-size: 26px;
   margin-top: 2px;
-  color: #f5ede8;
+  color: #F6EBE8;
   flex-shrink: 0;
 }
 
@@ -107,7 +107,7 @@
 
 .termineText {
   font-size: 16px;
-  color: #f5ede8;
+  color: #F6EBE8;
   line-height: 1.5;
 }
 
@@ -118,7 +118,7 @@
 
 .termineDatesLine {
   font-size: 16px;
-  color: #f5ede8;
+  color: #F6EBE8;
   line-height: 1.5;
 }
 
@@ -133,7 +133,7 @@
 .emptyLight {
   text-align: center;
   padding: 20px;
-  color: #f5ede8;
+  color: #F6EBE8;
 }
 
 .details {

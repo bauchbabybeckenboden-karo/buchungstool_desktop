@@ -306,24 +306,24 @@ export default async (req) => {
       };
 
       const teilnehmerinHtml = `
-        <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5ede8;padding:32px 12px;">
-          <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #ece1da;">
-            <div style="background:linear-gradient(135deg,#8b6464,#7d5858);padding:32px 36px;color:#f7f2ee;">
+        <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#F6EBE8;padding:32px 12px;">
+          <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #F6EBE8;">
+            <div style="background:linear-gradient(135deg,#8b6464,#8B6464);padding:32px 36px;color:#F6EBE8;">
               <p style="margin:0 0 6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#e3cfcf;">Deine Anmeldung im Überblick</p>
               <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
             </div>
             <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
               <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zum Kurs-Paket <strong style="font-weight:600;">${escapeHtml(name)}</strong>!</p>
 
-              <hr style="border:none;border-top:1px solid #ece1da;margin:24px 0;"/>
+              <hr style="border:none;border-top:1px solid #F6EBE8;margin:24px 0;"/>
 
               <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Wie es weitergeht</p>
               <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${preis} €</strong> auf folgendes Konto:</p>
               <table style="width:100%;font-size:13px;margin:0 0 18px;border-collapse:collapse;">
-                <tr><td style="padding:2px 0;color:#8a7060;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
-                <tr><td style="padding:2px 0;color:#8a7060;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
-                <tr><td style="padding:2px 0;color:#8a7060;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
-                <tr><td style="padding:2px 0;color:#8a7060;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
+                <tr><td style="padding:2px 0;color:#8B6464;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
+                <tr><td style="padding:2px 0;color:#8B6464;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
+                <tr><td style="padding:2px 0;color:#8B6464;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
+                <tr><td style="padding:2px 0;color:#8B6464;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
               </table>
               <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus (einmal reicht für beide Kurse).</p>
 
@@ -333,15 +333,15 @@ export default async (req) => {
               ${kurse.map(kursBlockHtml).join("")}
               <p style="margin:0 0 18px;font-size:14px;">
                 Paketpreis gesamt: ${preis} €<br/>
-                <span style="font-size:12px;color:#8a7060;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
+                <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
               </p>
 
               <p style="margin:0 0 24px;">💕 Solltest du Fragen haben, melde dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für dein Vertrauen 💕</p>
 
               <p style="margin:0;">Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
             </div>
-            <div style="background:#f5ede8;padding:20px 36px;font-size:12px;color:#8a7060;text-align:center;line-height:1.6;">
-              Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8a7060;">bauch-baby-beckenboden.de</a>
+            <div style="background:#F6EBE8;padding:20px 36px;font-size:12px;color:#8B6464;text-align:center;line-height:1.6;">
+              Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8B6464;">bauch-baby-beckenboden.de</a>
             </div>
           </div>
         </div>`;
@@ -473,24 +473,24 @@ export default async (req) => {
     const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${kursBezeichnung}`;
 
     const teilnehmerinHtml = `
-      <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#f5ede8;padding:32px 12px;">
-        <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #ece1da;">
-          <div style="background:linear-gradient(135deg,#8b6464,#7d5858);padding:32px 36px;color:#f7f2ee;">
+      <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#F6EBE8;padding:32px 12px;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #F6EBE8;">
+          <div style="background:linear-gradient(135deg,#8b6464,#8B6464);padding:32px 36px;color:#F6EBE8;">
             <p style="margin:0 0 6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#e3cfcf;">Deine Anmeldung im Überblick</p>
             <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
           </div>
           <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
             <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zu <strong style="font-weight:600;">${escapeHtml(courseTypeLabel)}</strong>!</p>
 
-            <hr style="border:none;border-top:1px solid #ece1da;margin:24px 0;"/>
+            <hr style="border:none;border-top:1px solid #F6EBE8;margin:24px 0;"/>
 
             <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Wie es weitergeht</p>
             <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${kurs.preis} €</strong> auf folgendes Konto:</p>
             <table style="width:100%;font-size:13px;margin:0 0 18px;border-collapse:collapse;">
-              <tr><td style="padding:2px 0;color:#8a7060;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
-              <tr><td style="padding:2px 0;color:#8a7060;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
-              <tr><td style="padding:2px 0;color:#8a7060;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
-              <tr><td style="padding:2px 0;color:#8a7060;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
+              <tr><td style="padding:2px 0;color:#8B6464;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
+              <tr><td style="padding:2px 0;color:#8B6464;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
+              <tr><td style="padding:2px 0;color:#8B6464;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
+              <tr><td style="padding:2px 0;color:#8B6464;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
             </table>
             <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus.</p>
 
@@ -501,12 +501,12 @@ export default async (req) => {
               ${terminZeilen}<br/>
               ${kurs.uhrzeit ? `${kurs.uhrzeit}${uhrzeitEnde ? " - " + uhrzeitEnde : ""} Uhr<br/>` : ""}
               Preis: ${kurs.preis} €<br/>
-              <span style="font-size:12px;color:#8a7060;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
+              <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
             </p>
 
             ${
               zusatz.kombiWunsch
-                ? `<p style="margin:0 0 18px;background:#f5ede8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei einem laufenden Kurs angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
+                ? `<p style="margin:0 0 18px;background:#F6EBE8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei einem laufenden Kurs angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
                     kombiCheck?.gefunden
                       ? `Ich konnte deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Du kannst direkt überweisen.`
                       : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Bitte überweise noch nicht, ich melde mich bei dir, sobald ich es geprüft habe.`
@@ -518,8 +518,8 @@ export default async (req) => {
 
             <p style="margin:0;">Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
           </div>
-          <div style="background:#f5ede8;padding:20px 36px;font-size:12px;color:#8a7060;text-align:center;line-height:1.6;">
-            Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8a7060;">bauch-baby-beckenboden.de</a>
+          <div style="background:#F6EBE8;padding:20px 36px;font-size:12px;color:#8B6464;text-align:center;line-height:1.6;">
+            Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8B6464;">bauch-baby-beckenboden.de</a>
           </div>
         </div>
       </div>`;

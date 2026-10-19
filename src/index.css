@@ -13,12 +13,12 @@ body {
 
 :root {
   --color-main: #8b6464;
-  --color-main-dark: #7d5858;
+  --color-main-dark: #8B6464;
   --color-bg: #e8d5d0;
   --color-text: #3d2b2b;
   --color-accent: #c4a0a0;
   --color-muted: #6d4f4f;
-  --color-box: #f5ede8;
+  --color-box: #F6EBE8;
 }
 
 button, input, select, textarea {
