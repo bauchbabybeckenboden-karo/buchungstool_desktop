@@ -240,6 +240,8 @@ export default function Admin() {
                         row={row}
                         onUpdateForm={updateImportForm}
                         onImport={importRow}
+                        collapsed={istKursEingeklappt('vorschlag_' + row.key)}
+                        onToggleCollapsed={() => toggleKurs('vorschlag_' + row.key)}
                       />
                     ))}
                   </div>

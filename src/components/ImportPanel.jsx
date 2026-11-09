@@ -198,9 +198,24 @@ export function useImportCandidates(onImported) {
 // der jeweiligen Kursart-/Jahres-Gruppe zusammen mit den schon echten Kursen
 // (CourseCard) angezeigt, damit Karo nicht mehr zwischen einer separaten
 // Import-Liste und der eigentlichen Kursliste wechseln muss.
-export function ImportCandidateCard({ row, onUpdateForm, onImport }) {
+export function ImportCandidateCard({ row, onUpdateForm, onImport, collapsed, onToggleCollapsed }) {
+  const von = row.termineDesDurchlaufs[0]
+  const bis = row.termineDesDurchlaufs[row.termineDesDurchlaufs.length - 1]
+  const de = (iso) => (iso ? iso.split('-').reverse().join('.') : '')
   return (
     <div className={styles.card}>
+      <button
+        type="button"
+        onClick={onToggleCollapsed}
+        style={{ display: 'flex', alignItems: 'baseline', gap: 10, width: '100%', background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', textAlign: 'left', font: 'inherit' }}
+      >
+        <span style={{ fontSize: 12, color: 'var(--color-main)' }}>{collapsed ? '▸' : '▾'}</span>
+        <span style={{ fontWeight: 700, fontSize: 14 }}>Vorschlag: {row.form.name || row.gruppe.name}</span>
+        <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{de(von)} – {de(bis)}</span>
+      </button>
+
+      {!collapsed && (
+        <>
       <div className={styles.original}>
         <strong>Aus Kursabfrage:</strong> {row.gruppe.name}
         <br />
@@ -311,6 +326,8 @@ export function ImportCandidateCard({ row, onUpdateForm, onImport }) {
       <button className={styles.importButton} onClick={() => onImport(row)}>
         Als Kurs übernehmen
       </button>
+        </>
+      )}
     </div>
   )
 }

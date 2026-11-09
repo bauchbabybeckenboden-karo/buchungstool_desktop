@@ -15,7 +15,14 @@ const KEYWORDS = [
 export function guessCourseType(name) {
   const text = name || ''
   const matched = KEYWORDS.filter((k) => k.patterns.some((p) => p.test(text))).map((k) => k.slug)
-  return matched.length === 1 ? matched[0] : ''
+  if (matched.length === 1) return matched[0]
+  // "Soyo Körpermitte & Beckenboden" trifft auf "soyo" UND "beckenboden" -
+  // dann gewinnt die spezifischere Kursart Körpermitte & Beckenboden (vorher
+  // blieb die Kursart leer und der Vorschlag erschien in JEDEM Reiter).
+  if (matched.length === 2 && matched.includes('koerpermitte-beckenboden') && matched.includes('somatic-yoga')) {
+    return 'koerpermitte-beckenboden'
+  }
+  return ''
 }
 
 const WOCHENTAGE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag']
