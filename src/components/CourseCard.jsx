@@ -468,6 +468,10 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
         <label htmlFor={`visible-${course.id}`}>Auf Website zeigen</label>
       </div>
 
+      {course.id && course.course_type && (
+        <VorabLink course={course} />
+      )}
+
       <div className={styles.cardActions}>
         <button type="button" className={styles.duplicateButton} onClick={duplicateCourse}>
           Duplizieren
@@ -478,6 +482,31 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
       </div>
         </>
       )}
+    </div>
+  )
+}
+
+// Persönlicher Anmeldelink für diesen Kurs - funktioniert auch, solange der
+// Kurs noch NICHT auf der Website gezeigt wird. Buchungen darüber zählen
+// ganz normal als belegte Plätze.
+function VorabLink({ course }) {
+  const [kopiert, setKopiert] = useState(false)
+  const link = `${window.location.origin}/kurse/${course.course_type}?kurs=${course.id}`
+  function kopieren() {
+    navigator.clipboard.writeText(link).then(() => {
+      setKopiert(true)
+      setTimeout(() => setKopiert(false), 2000)
+    })
+  }
+  return (
+    <div style={{ margin: '10px 0', padding: '8px 10px', borderRadius: 8, background: 'rgba(139,100,100,0.07)', fontSize: 13 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Anmeldelink (auch vor Freigabe auf der Website)</div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ wordBreak: 'break-all', flex: 1 }}>{link}</span>
+        <button type="button" className={styles.duplicateButton} onClick={kopieren}>
+          {kopiert ? 'Kopiert' : 'Kopieren'}
+        </button>
+      </div>
     </div>
   )
 }

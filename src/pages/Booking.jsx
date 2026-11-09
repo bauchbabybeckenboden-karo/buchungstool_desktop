@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
@@ -405,6 +405,12 @@ const initialGutschein = { hatGutschein: false, gutscheinBetrag: '' }
 export default function Booking() {
   const { courseTypeSlug } = useParams()
   const courseType = getCourseTypeBySlug(courseTypeSlug)
+  // Vorab-Link: /kurse/<kursart>?kurs=<kurs-id> zeigt genau diesen Kurs
+  // (plus seine Online-Variante), auch wenn er noch nicht "Auf Website zeigen" hat.
+  // Die Kurs-ID ist eine zufällige UUID und damit nicht erratbar.
+  const [searchParams] = useSearchParams()
+  const vorabParam = searchParams.get('kurs') || ''
+  const vorabKursId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vorabParam) ? vorabParam : ''
 
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -444,6 +450,27 @@ export default function Booking() {
     if (!courseType) return
     let active = true
     setLoading(true)
+    if (vorabKursId) {
+      ;(async () => {
+        const { data: kurs, error } = await supabase.from('kurse').select('*').eq('id', vorabKursId).maybeSingle()
+        if (!active) return
+        if (error || !kurs) {
+          setLoadError(error ? error.message : 'Kurs nicht gefunden')
+          setLoading(false)
+          return
+        }
+        let liste = [kurs]
+        if (kurs.online_partner_id) {
+          const { data: partner } = await supabase.from('kurse').select('*').eq('id', kurs.online_partner_id).maybeSingle()
+          if (!active) return
+          if (partner) liste.push(partner)
+        }
+        setCourses(liste)
+        setSelectedId(kurs.id)
+        setLoading(false)
+      })()
+      return () => { active = false }
+    }
     supabase
       .from('kurse')
       .select('*')
@@ -457,7 +484,7 @@ export default function Booking() {
         setLoading(false)
       })
     return () => { active = false }
-  }, [courseTypeSlug, courseType])
+  }, [courseTypeSlug, courseType, vorabKursId])
 
   // Kombi-Pakete laden, die diese Kursseite betreffen (einer der beiden
   // gebündelten Kurse gehört zu diesem Kurstyp). Da kurs_id_1/kurs_id_2 auf
@@ -466,6 +493,7 @@ export default function Booking() {
   // nachgeladen statt sich auf die oben geladene `courses`-Liste zu verlassen.
   useEffect(() => {
     if (!courseTypeSlug) return
+    if (vorabKursId) { setPakete([]); return }
     let active = true
     supabase
       .from('kurs_pakete')
@@ -493,7 +521,7 @@ export default function Booking() {
         setPakete(angereichert)
       })
     return () => { active = false }
-  }, [courseTypeSlug])
+  }, [courseTypeSlug, vorabKursId])
 
   // Belegungszahlen laden, um "noch X Plätze frei" / "Vor Ort ausgebucht" auf
   // den Termin- und Paket-Kacheln anzuzeigen. Bei Kombi-Paketen zählt der
@@ -568,8 +596,8 @@ export default function Booking() {
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
-  const primaerKurse = courses.filter((c) => c.course_type === courseTypeSlug).sort(onlineZuletzt)
-  const komboKurse = courses.filter((c) => c.course_type !== courseTypeSlug).sort(onlineZuletzt)
+  const primaerKurse = (vorabKursId ? courses : courses.filter((c) => c.course_type === courseTypeSlug)).sort(onlineZuletzt)
+  const komboKurse = vorabKursId ? [] : courses.filter((c) => c.course_type !== courseTypeSlug).sort(onlineZuletzt)
 
   function spotsLeftFuer(course) {
     if (!course.max_teilnehmerinnen) return null
@@ -946,7 +974,11 @@ export default function Booking() {
 
       <div className={styles.termineSection}>
         {loading && <p className={styles.emptyLight}>Lade Kurse …</p>}
-        {loadError && <p className={styles.emptyLight}>Kurse konnten nicht geladen werden.</p>}
+        {loadError && (
+          <p className={styles.emptyLight}>
+            {vorabKursId ? 'Dieser Anmeldelink ist nicht (mehr) gültig.' : 'Kurse konnten nicht geladen werden.'}
+          </p>
+        )}
         {!loading && !loadError && courses.length === 0 && (
           <p className={styles.emptyLight}>Aktuell sind keine {courseType.label}-Kurse zur Anmeldung freigegeben.</p>
         )}
@@ -957,7 +989,7 @@ export default function Booking() {
               label={wochentagVonKurs(c)}
               spotsLeft={spotsLeftFuer(c)}
               selected={selectedId === c.id}
-              onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
+              onSelect={(id) => { setSelectedId((prev) => (prev === id ? '' : id)); setSelectedPaketId('') }}
             />
             {selectedId === c.id && anmeldeFormular}
           </Fragment>
@@ -970,7 +1002,7 @@ export default function Booking() {
               comboLabel={getCourseTypeBySlug(c.course_type)?.label || c.course_type}
               spotsLeft={spotsLeftFuer(c)}
               selected={selectedId === c.id}
-              onSelect={(id) => { setSelectedId(id); setSelectedPaketId('') }}
+              onSelect={(id) => { setSelectedId((prev) => (prev === id ? '' : id)); setSelectedPaketId('') }}
             />
             {selectedId === c.id && anmeldeFormular}
           </Fragment>
@@ -981,7 +1013,7 @@ export default function Booking() {
               paket={p}
               spotsLeft={spotsLeftFuerPaket(p)}
               selected={selectedPaketId === p.id}
-              onSelect={(id) => { setSelectedPaketId(id); setSelectedId('') }}
+              onSelect={(id) => { setSelectedPaketId((prev) => (prev === id ? '' : id)); setSelectedId('') }}
             />
             {selectedPaketId === p.id && anmeldeFormular}
           </Fragment>
