@@ -75,6 +75,7 @@ export default async (req) => {
   const url = new URL(req.url);
   const kursIds = url.searchParams.getAll("kurs");
   const gefiltert = kursIds.length > 0;
+  const nurEinzeln = url.searchParams.get("nur") === "1"; // Einzelkurs ohne Partnerkurs
 
   let kurse = [];
   let error = null;
@@ -85,7 +86,7 @@ export default async (req) => {
     const erste = await supabase.from("kurse").select("*").in("id", gueltig);
     error = erste.error;
     kurse = erste.data || [];
-    const partnerIds = [...new Set(kurse.map((k) => k.kombi_partner_id).filter(Boolean))].filter(
+    const partnerIds = nurEinzeln ? [] : [...new Set(kurse.map((k) => k.kombi_partner_id).filter(Boolean))].filter(
       (id) => !kurse.some((k) => k.id === id)
     );
     if (!error && partnerIds.length > 0) {

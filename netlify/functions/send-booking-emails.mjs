@@ -29,10 +29,10 @@ const FRAGEBOGEN_URL = "https://bauch-baby-beckenboden-weiterleitung.netlify.app
 // Abo-Link für die Kurstermine der Teilnehmerin (Funktion kalender-feed):
 // aktualisiert sich im Kalender automatisch, auch bei Ausfällen/Verschiebungen.
 const SITE_URL = "https://bauch-baby-beckenboden-buchungen.netlify.app";
-function kalenderBlockHtml(kursIds) {
+function kalenderBlockHtml(kursIds, nurEinzeln = false) {
   const ids = [...new Set((kursIds || []).filter(Boolean))];
   if (ids.length === 0) return "";
-  const url = `${SITE_URL}/.netlify/functions/kalender-feed?${ids.map((id) => `kurs=${id}`).join("&")}`;
+  const url = `${SITE_URL}/.netlify/functions/kalender-feed?${ids.map((id) => `kurs=${id}`).join("&")}${nurEinzeln ? "&nur=1" : ""}`;
   const webcal = url.replace(/^https?:/, "webcal:");
   return `
             <p style="margin:0 0 18px;font-size:14px;">
@@ -521,7 +521,7 @@ export default async (req) => {
               Preis: ${kurs.preis} €<br/>
               <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
             </p>
-            ${kalenderBlockHtml([kurs.id])}
+            ${kalenderBlockHtml([kurs.id], true)}
 
             ${
               zusatz.kombiWunsch

@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine } from '../pricing.js'
+import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine, einzelPreis } from '../pricing.js'
 
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
@@ -52,7 +52,7 @@ function terminDatenOderRange(course) {
 // gepflegter Setmore-Einbindung (Tabler-Icons, "Wenige Plätze
 // verfügbar"-Hinweis, Pin + Terminliste) - hier automatisch aus den
 // Kursdaten erzeugt statt manuell im HTML-Block getippt.
-function TerminBox({ course, partner, label, comboLabel, spotsLeft, selected, onSelect }) {
+function TerminBox({ course, partner, solo, label, comboLabel, spotsLeft, selected, onSelect }) {
   const datum = course.termin_daten?.[0] || course.start_datum
   const zeitpunkt = `${formatDatumDE(datum)} · ${course.uhrzeit || ''}`.trim()
   // Der Kursname wird mit in die kleine Beschriftungszeile aufgenommen, damit
@@ -64,9 +64,11 @@ function TerminBox({ course, partner, label, comboLabel, spotsLeft, selected, on
   // Zeile neben dem Namen entsprechend beschriftet - so ist auf einen Blick
   // klar, dass man hier später einsteigt statt von Anfang an dabei zu sein.
   const bereitsGestartet = vergangeneTermine(course) > 0
-  const kombiMit = comboLabel ? [] : (course.zusatz_course_types || []).map((slug) => getCourseTypeBySlug(slug)?.label || slug)
+  const kombiMit = comboLabel || solo ? [] : (course.zusatz_course_types || []).map((slug) => getCourseTypeBySlug(slug)?.label || slug)
   const beschriftungBasis = label ? `${label} · ${course.name}` : course.name
-  const beschriftung = kombiMit.length > 0 ? `${beschriftungBasis} · Kombi mit ${kombiMit.join(' & ')}` : beschriftungBasis
+  const beschriftung = solo
+    ? `${beschriftungBasis} · nur dieser Kurs`
+    : kombiMit.length > 0 ? `${beschriftungBasis} · Kombi mit ${kombiMit.join(' & ')}` : beschriftungBasis
   let titelText
   let istWarnung = false
   if (comboLabel) {
@@ -100,9 +102,9 @@ function TerminBox({ course, partner, label, comboLabel, spotsLeft, selected, on
   // pricing.js) - beides wird unten getrennt angezeigt, damit ein echter
   // Rabatt nicht mit der automatischen Späte-Anmeldung-Reduzierung verwechselt
   // wird.
-  const grundpreis = effektiverGrundpreis(course)
+  const grundpreis = solo ? einzelPreis(course) : effektiverGrundpreis(course)
   const effektivPreis = reduzierterPreis(grundpreis, course, partner)
-  const rabattiert = grundpreis < Number(course.preis)
+  const rabattiert = !solo && grundpreis < Number(course.preis)
   const spaeterReduziert = effektivPreis < grundpreis
 
   const klassen = [styles.termineBox]
@@ -427,6 +429,8 @@ export default function Booking() {
   const [bookingCounts, setBookingCounts] = useState({})
   const [partnerMap, setPartnerMap] = useState({})
   const [kalenderKursIds, setKalenderKursIds] = useState([])
+  const [kalenderNur, setKalenderNur] = useState(false)
+  const [soloModus, setSoloModus] = useState(false)
   const [selectedId, setSelectedId] = useState('')
   const [selectedPaketId, setSelectedPaketId] = useState('')
   const [general, setGeneral] = useState(initialGeneral)
@@ -582,19 +586,28 @@ export default function Booking() {
   }, [courses])
 
   const partnerVon = (c) => (c && c.kombi_partner_id ? partnerMap[c.kombi_partner_id] || null : null)
+  // Kachel wählen/abwählen; solo = "nur dieser Kurs" statt Kombi mit Partnerkurs.
+  function waehleKurs(id, solo) {
+    if (selectedId === id && soloModus === solo) setSelectedId('')
+    else { setSelectedId(id); setSoloModus(solo) }
+    setSelectedPaketId('')
+  }
   const istKombiKurs = (c) => Boolean(c) && ((c.zusatz_course_types || []).length > 0 || Boolean(c.kombi_partner_id))
 
   const selectedCourse = courses.find((c) => c.id === selectedId)
-  const selectedPartner = partnerVon(selectedCourse)
+  // Bei einem Kurs mit Partnerkurs gibt es zwei Kacheln: "nur dieser Kurs" (Einzelpreis)
+  // und die Kombi mit Partnerkurs. soloModus merkt sich, welche gewählt ist.
+  const istSolo = soloModus && Boolean(partnerVon(selectedCourse))
+  const selectedPartner = istSolo ? null : partnerVon(selectedCourse)
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
 
   // Effektiver (ggf. rabattierter und/oder reduzierter) Preis für die aktuelle
   // Auswahl - wird für Anzeige UND die verschickte Bestätigungsmail verwendet,
   // damit beide übereinstimmen (siehe pricing.js: effektiverGrundpreis,
   // reduzierterPreis).
-  const grundpreisKurs = selectedCourse ? effektiverGrundpreis(selectedCourse) : null
+  const grundpreisKurs = selectedCourse ? (istSolo ? einzelPreis(selectedCourse) : effektiverGrundpreis(selectedCourse)) : null
   const effektivPreisKurs = selectedCourse ? reduzierterPreis(grundpreisKurs, selectedCourse, selectedPartner) : null
-  const rabattiertKurs = selectedCourse ? grundpreisKurs < Number(selectedCourse.preis) : false
+  const rabattiertKurs = selectedCourse && !istSolo ? grundpreisKurs < Number(selectedCourse.preis) : false
   const effektivPreisPaket = selectedPaket
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
     : null
@@ -609,7 +622,7 @@ export default function Booking() {
   // schon ihr eigener Mechanismus.
   // Bei Kombikursen (Kurs mit Partnerkurs oder Zusatz-Kursart) ist der Kombi-Preis
   // schon im Kurspreis enthalten - dort wird der Hinweis gar nicht angezeigt.
-  const zeigeKombiWunsch = Boolean(selectedCourse) && !istKombiKurs(selectedCourse)
+  const zeigeKombiWunsch = Boolean(selectedCourse) && (istSolo || !istKombiKurs(selectedCourse))
 
   // Kombi-Wunsch-Preis: pauschal 10 € Rabatt (wie beim Kombikurs) auf den ohnehin angezeigten Preis des
   // PLUS-Kurses, aufgerundet auf den vollen Euro - NICHT auf den bereits
@@ -632,7 +645,14 @@ export default function Booking() {
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
   const primaerKurse = (vorabKursId ? courses : courses.filter((c) => c.course_type === courseTypeSlug)).sort(onlineZuletzt)
-  const komboKurse = vorabKursId ? [] : courses.filter((c) => c.course_type !== courseTypeSlug).sort(onlineZuletzt)
+  // Ein Kurs, der mit einem Kurs dieser Seite per Partnerkurs verknüpft ist, wird
+  // schon über dessen Kombi-Kachel angeboten - dann keine zweite "PLUS"-Kachel.
+  const komboKurse = vorabKursId
+    ? []
+    : courses
+        .filter((c) => c.course_type !== courseTypeSlug)
+        .filter((c) => !primaerKurse.some((p) => p.kombi_partner_id === c.id || c.kombi_partner_id === p.id))
+        .sort(onlineZuletzt)
 
   function platzFrei(course) {
     if (!course.max_teilnehmerinnen) return null
@@ -839,6 +859,7 @@ export default function Booking() {
       return
     }
     setKalenderKursIds([selectedCourse.id])
+    setKalenderNur(true)
     setSubmitted(true)
 
     // E-Mails verschicken (Bestätigung an Teilnehmerin + Benachrichtigung an Karo).
@@ -861,7 +882,7 @@ export default function Booking() {
           <h3>Vielen Dank für Deine Anmeldung!</h3>
           <p>Du erhältst in Kürze eine Bestätigungsemail.</p>
           {kalenderKursIds.length > 0 && (() => {
-            const kalenderUrl = `${window.location.origin}/.netlify/functions/kalender-feed?${kalenderKursIds.map((id) => `kurs=${id}`).join('&')}`
+            const kalenderUrl = `${window.location.origin}/.netlify/functions/kalender-feed?${kalenderKursIds.map((id) => `kurs=${id}`).join('&')}${kalenderNur ? '&nur=1' : ''}`
             const kalenderWebcal = kalenderUrl.replace(/^https?:/, 'webcal:')
             return (
               <div style={{ marginTop: 18 }}>
@@ -1101,15 +1122,28 @@ export default function Booking() {
         )}
         {primaerKurse.map((c) => (
           <Fragment key={c.id}>
+            {partnerVon(c) && (
+              <>
+                <TerminBox
+                  course={c}
+                  solo
+                  label={wochentagVonKurs(c)}
+                  spotsLeft={platzFrei(c)}
+                  selected={selectedId === c.id && soloModus}
+                  onSelect={(id) => waehleKurs(id, true)}
+                />
+                {selectedId === c.id && soloModus && anmeldeFormular}
+              </>
+            )}
             <TerminBox
               course={c}
               partner={partnerVon(c)}
               label={wochentagVonKurs(c)}
               spotsLeft={spotsLeftFuer(c)}
-              selected={selectedId === c.id}
-              onSelect={(id) => { setSelectedId((prev) => (prev === id ? '' : id)); setSelectedPaketId('') }}
+              selected={selectedId === c.id && (!soloModus || !partnerVon(c))}
+              onSelect={(id) => waehleKurs(id, false)}
             />
-            {selectedId === c.id && anmeldeFormular}
+            {selectedId === c.id && (!soloModus || !partnerVon(c)) && anmeldeFormular}
           </Fragment>
         ))}
         {komboKurse.map((c) => (
@@ -1121,7 +1155,7 @@ export default function Booking() {
               comboLabel={getCourseTypeBySlug(c.course_type)?.label || c.course_type}
               spotsLeft={spotsLeftFuer(c)}
               selected={selectedId === c.id}
-              onSelect={(id) => { setSelectedId((prev) => (prev === id ? '' : id)); setSelectedPaketId('') }}
+              onSelect={(id) => waehleKurs(id, false)}
             />
             {selectedId === c.id && anmeldeFormular}
           </Fragment>

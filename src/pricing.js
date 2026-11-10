@@ -33,6 +33,13 @@ export function calculatePreis(courseTypeSlug, termine, zusatzCourseTypes = []) 
   return preisCents / 100
 }
 
+// Einzelpreis eines Kurses ohne Kombi (nach der Regel oben aus der Terminzahl) -
+// für die Kachel "nur dieser Kurs" bei Kursen mit Partnerkurs.
+export function einzelPreis(course) {
+  const p = calculatePreis(course.course_type, course.termine, [])
+  return p !== null ? p : Number(course.preis)
+}
+
 // Preis eines Kombikurses mit Partnerkurs (z.B. Körpermitte + Mamafit): beide
 // Teilpreise nach der jeweiligen Terminzahl, abzüglich 10 € Kombi-Rabatt.
 export function calculateKombiPartnerPreis(slug1, termine1, slug2, termine2) {
