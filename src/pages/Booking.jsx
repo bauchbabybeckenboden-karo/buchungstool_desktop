@@ -64,8 +64,9 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   // Zeile neben dem Namen entsprechend beschriftet - so ist auf einen Blick
   // klar, dass man hier später einsteigt statt von Anfang an dabei zu sein.
   const bereitsGestartet = vergangeneTermine(course) > 0
-  const beschriftung = label ? `${label} · ${course.name}` : course.name
-
+  const kombiMit = comboLabel ? [] : (course.zusatz_course_types || []).map((slug) => getCourseTypeBySlug(slug)?.label || slug)
+  const beschriftungBasis = label ? `${label} · ${course.name}` : course.name
+  const beschriftung = kombiMit.length > 0 ? `${beschriftungBasis} · Kombi mit ${kombiMit.join(' & ')}` : beschriftungBasis
   let titelText
   let istWarnung = false
   if (comboLabel) {
