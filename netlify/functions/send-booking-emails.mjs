@@ -26,6 +26,22 @@ const BANK = {
 };
 const FRAGEBOGEN_URL = "https://bauch-baby-beckenboden-weiterleitung.netlify.app";
 
+// Abo-Link für die Kurstermine der Teilnehmerin (Funktion kalender-feed):
+// aktualisiert sich im Kalender automatisch, auch bei Ausfällen/Verschiebungen.
+const SITE_URL = "https://bauch-baby-beckenboden-buchungen.netlify.app";
+function kalenderBlockHtml(kursIds) {
+  const ids = [...new Set((kursIds || []).filter(Boolean))];
+  if (ids.length === 0) return "";
+  const url = `${SITE_URL}/.netlify/functions/kalender-feed?${ids.map((id) => `kurs=${id}`).join("&")}`;
+  const webcal = url.replace(/^https?:/, "webcal:");
+  return `
+            <p style="margin:0 0 18px;font-size:14px;">
+              📅 <strong>Deine Termine im Kalender:</strong>
+              <a href="${webcal}" style="color:#8b6464;">Kurstermine abonnieren</a> (iPhone, Apple Kalender, Outlook). Die Termine aktualisieren sich automatisch, falls sich etwas ändert.<br/>
+              <span style="font-size:12px;color:#8B6464;">Google Kalender: Link kopieren und unter „Weitere Kalender“ – „Per URL“ einfügen:<br/>${url}</span>
+            </p>`;
+}
+
 const COURSE_TYPE_LABELS = {
   mamafit: "Mamafit",
   schwangerfit: "Schwangerfit",
@@ -285,6 +301,7 @@ export default async (req) => {
     // --- Kombi-Paket: eine gemeinsame Bestätigungsmail für beide gebündelten Kurse ---
     if (paket) {
       const { name, preis, kurse } = paket;
+      const bezeichnung = paket.bezeichnung || "Kurs-Paket";
       const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
       const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${name}`;
 
@@ -313,7 +330,7 @@ export default async (req) => {
               <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
             </div>
             <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
-              <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zum Kurs-Paket <strong style="font-weight:600;">${escapeHtml(name)}</strong>!</p>
+              <p style="margin:0 0 18px;">vielen Dank für Deine Anmeldung zum ${escapeHtml(bezeichnung)} <strong style="font-weight:600;">${escapeHtml(name)}</strong>!</p>
 
               <hr style="border:none;border-top:1px solid #F6EBE8;margin:24px 0;"/>
 
@@ -331,8 +348,9 @@ export default async (req) => {
 
               <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Deine Kurstermine</p>
               ${kurse.map(kursBlockHtml).join("")}
+              ${kalenderBlockHtml(kurse.map((k) => k.id))}
               <p style="margin:0 0 18px;font-size:14px;">
-                Paketpreis gesamt: ${preis} €<br/>
+                Gesamtpreis: ${preis} €<br/>
                 <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
               </p>
 
@@ -385,11 +403,11 @@ export default async (req) => {
               <span style="display:inline-block;width:28px;height:28px;border-radius:50%;background:#f0d9d9;"></span>
               <strong style="font-size:15px;">Bauch Baby Beckenboden</strong>
             </div>
-            <h2 style="margin:20px 0 16px 0;font-size:20px;">Neue Teilnehmerin (Kurs-Paket)</h2>
+            <h2 style="margin:20px 0 16px 0;font-size:20px;">Neue Teilnehmerin (${escapeHtml(bezeichnung)})</h2>
           </div>
           ${gutscheinInfoHtml}
           <table style="width:100%;padding:0 20px;border-collapse:collapse;">
-            ${zeile("Paket", escapeHtml(name))}
+            ${zeile(bezeichnung, escapeHtml(name))}
             ${zeile("Wann", wannTextPaket)}
             ${zeile("Preis", `${preis} €`)}
             ${zeile("Mit", "Karoline Hartwig")}
@@ -426,7 +444,7 @@ export default async (req) => {
       await sendResend({
         from: FROM,
         to: ADMIN_EMAIL,
-        subject: `${buchung.vorname} ${buchung.nachname} Kurs-Paket ${name}`,
+        subject: `${buchung.vorname} ${buchung.nachname} ${bezeichnung} ${name}`,
         html: adminHtml,
         attachments,
       });
@@ -503,10 +521,11 @@ export default async (req) => {
               Preis: ${kurs.preis} €<br/>
               <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
             </p>
+            ${kalenderBlockHtml([kurs.id])}
 
             ${
               zusatz.kombiWunsch
-                ? `<p style="margin:0 0 18px;background:#F6EBE8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, bereits bei einem laufenden Kurs angemeldet zu sein und diesen Kurs zusätzlich zu buchen. ${
+                ? `<p style="margin:0 0 18px;background:#F6EBE8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, zu einem anderen Kurs bei Wunderwerk Frau angemeldet zu sein, der im gleichen Zeitraum läuft, und diesen Kurs zusätzlich zu buchen. ${
                     kombiCheck?.gefunden
                       ? `Ich konnte deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Du kannst direkt überweisen.`
                       : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Bitte überweise noch nicht, ich melde mich bei dir, sobald ich es geprüft habe.`
@@ -548,7 +567,7 @@ export default async (req) => {
     // abgleichen muss.
     const kombiWunschInfoHtml = zusatz.kombiWunsch
       ? kombiCheck?.gefunden
-        ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#e6f2e9;border:1px solid #a9d4b5;border-radius:6px;font-size:13px;color:#2f5c3d;">✅ Kombi-Wunsch automatisch bestätigt: Name wurde in einer Buchung${kombiCheck.kursLabel ? ` von <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} gefunden. Preis für den Zusatzkurs (10 % Rabatt bereits eingerechnet): <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>. Keine weitere Prüfung nötig, Teilnehmerin wurde bereits informiert.</div>`
+        ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#e6f2e9;border:1px solid #a9d4b5;border-radius:6px;font-size:13px;color:#2f5c3d;">✅ Kombi-Wunsch automatisch bestätigt: Name wurde in einer Buchung${kombiCheck.kursLabel ? ` von <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} gefunden. Preis für den Zusatzkurs (10 € Rabatt bereits eingerechnet): <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>. Keine weitere Prüfung nötig, Teilnehmerin wurde bereits informiert.</div>`
         : `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:2px solid #e05d5d;border-radius:6px;font-size:13px;color:#6b1e1e;">❗ Kombi-Wunsch NICHT automatisch bestätigt: Der Name wurde in keiner anderen bestehenden Buchung gefunden. Bitte manuell prüfen (Tippfehler? anderer Name? tatsächlich nicht angemeldet?) und der Teilnehmerin Bescheid geben. Vorgesehener Preis: <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>.</div>`
       : "";
 

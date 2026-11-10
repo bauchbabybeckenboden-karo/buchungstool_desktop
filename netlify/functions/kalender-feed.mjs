@@ -1,9 +1,10 @@
-// Liefert alle Kurstermine als abonnierbaren iCalendar-Feed (.ics) - Karo
-// trägt die URL dieser Funktion EINMAL in Google Kalender als "Kalender per
-// URL abonnieren" ein, danach tauchen neu angelegte/importierte Kurse
-// automatisch dort auf (Google fragt den Feed selbstständig alle paar
-// Stunden neu ab - keine sofortige Aktualisierung, aber ohne dass Karo
-// irgendetwas manuell nachpflegen muss).
+// Liefert Kurstermine als abonnierbaren iCalendar-Feed (.ics).
+// - Ohne Parameter: alle Kurse (Karos eigener Kalender).
+// - Mit ?kurs=<id> (mehrfach möglich): nur diese Kurse plus deren Partnerkurs
+//   (Kombikurs) - der Link für Teilnehmerinnen. Er enthält nur Kurstermine
+//   (keine Ferien/Feiertage, keine personenbezogenen Daten); ausgefallene
+//   Termine (kurse.ausgefallen_daten) erscheinen nicht. Kalender-Programme
+//   fragen den Feed selbstständig neu ab, Änderungen kommen automatisch an.
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY);
@@ -14,27 +15,6 @@ const COURSE_TYPE_LABELS = {
   "somatic-yoga": "Somatic Yoga",
   "koerpermitte-beckenboden": "Körpermitte & Beckenboden",
 };
-
-// Hessische Schulferien (Kultusministerium Hessen, bis 2030) - erscheinen als
-// Ganztagestermine im Kalender (blocken keine Zeit).
-const FERIEN = [
-  ["2026-10-05", "2026-10-17", "Herbstferien"],
-  ["2026-12-23", "2027-01-12", "Weihnachtsferien"],
-  ["2027-03-22", "2027-04-02", "Osterferien"],
-  ["2027-06-28", "2027-08-06", "Sommerferien"],
-  ["2027-10-04", "2027-10-16", "Herbstferien"],
-  ["2027-12-23", "2028-01-11", "Weihnachtsferien"],
-  ["2028-04-03", "2028-04-14", "Osterferien"],
-  ["2028-07-03", "2028-08-11", "Sommerferien"],
-  ["2028-10-09", "2028-10-20", "Herbstferien"],
-  ["2028-12-27", "2029-01-12", "Weihnachtsferien"],
-  ["2029-03-29", "2029-04-13", "Osterferien"],
-  ["2029-07-16", "2029-08-24", "Sommerferien"],
-  ["2029-10-15", "2029-10-26", "Herbstferien"],
-  ["2029-12-24", "2030-01-11", "Weihnachtsferien"],
-  ["2030-04-08", "2030-04-22", "Osterferien"],
-  ["2030-07-22", "2030-08-30", "Sommerferien"],
-];
 
 function plusDaysISO(iso, n) {
   const d = new Date(iso + "T12:00:00Z");
@@ -88,11 +68,37 @@ function foldLine(line) {
   return result + rest;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ORT = "Heinrich-Bertelmann-Str. 12, Kassel";
+
 export default async (req) => {
-  const { data: kurse, error } = await supabase
-    .from("kurse")
-    .select("*")
-    .order("start_datum", { ascending: true });
+  const url = new URL(req.url);
+  const kursIds = url.searchParams.getAll("kurs");
+  const gefiltert = kursIds.length > 0;
+
+  let kurse = [];
+  let error = null;
+
+  if (gefiltert) {
+    const gueltig = [...new Set(kursIds.filter((id) => UUID_RE.test(id)))].slice(0, 6);
+    if (gueltig.length === 0) return new Response("Ungültiger Kalender-Link.", { status: 400 });
+    const erste = await supabase.from("kurse").select("*").in("id", gueltig);
+    error = erste.error;
+    kurse = erste.data || [];
+    const partnerIds = [...new Set(kurse.map((k) => k.kombi_partner_id).filter(Boolean))].filter(
+      (id) => !kurse.some((k) => k.id === id)
+    );
+    if (!error && partnerIds.length > 0) {
+      const zweite = await supabase.from("kurse").select("*").in("id", partnerIds);
+      error = zweite.error;
+      kurse = kurse.concat(zweite.data || []);
+    }
+    if (!error && kurse.length === 0) return new Response("Kurs nicht gefunden.", { status: 404 });
+  } else {
+    const alle = await supabase.from("kurse").select("*").order("start_datum", { ascending: true });
+    error = alle.error;
+    kurse = alle.data || [];
+  }
 
   if (error) {
     return new Response("Kalender konnte nicht geladen werden: " + error.message, { status: 500 });
@@ -103,28 +109,31 @@ export default async (req) => {
   // gleicher Kurstyp, gleicher Starttermin) werden zu EINEM Eintrag
   // zusammengefuehrt. Reine Online-Kurse bleiben mit "(Online)" erhalten.
   const gesehen = new Set();
-  const sortiert = [...(kurse || [])].sort(
+  const sortiert = [...kurse].sort(
     (x, y) => Number(!!x.ist_online) - Number(!!y.ist_online) // Vor Ort zuerst
   );
 
   for (const kurs of sortiert) {
-    const typLabel = COURSE_TYPE_LABELS[kurs.course_type] || kurs.course_type;
     const basisName = String(kurs.name || "").replace(/\s*\(?online\)?\s*$/i, "").trim();
     const dauer = kurs.dauer_min || 60;
+    const online = kurs.ist_online ? " (Online)" : "";
+    const ort = kurs.ist_online ? "Online (Zoom)" : ORT;
+    const ausgefallen = new Set(Array.isArray(kurs.ausgefallen_daten) ? kurs.ausgefallen_daten : []);
 
     if (Array.isArray(kurs.termin_daten) && kurs.termin_daten.length > 0) {
-      // Bevorzugter Fall: die echten Einzeltermine sind bekannt (aus der
-      // Kursabfrage inkl. Pausenwochen) - ein Kalendereintrag pro Termin.
-      kurs.termin_daten.forEach((datum, i) => {
+      // Die echten Einzeltermine (aus der Kursabfrage inkl. Pausenwochen) -
+      // ein Kalendereintrag pro Termin, ausgefallene Termine entfallen.
+      const termine = kurs.termin_daten.filter((d) => !ausgefallen.has(d));
+      termine.forEach((datum, i) => {
         const key = `${kurs.course_type}|${basisName.toLowerCase()}|${toICSDateTime(datum, kurs.uhrzeit)}`;
         if (gesehen.has(key)) return; // Online-Doppelung zu einem Vor-Ort-Termin
         gesehen.add(key);
-        const online = kurs.ist_online ? " (Online)" : "";
         events.push({
           uid: `${kurs.id}-${datum}@bauch-baby-beckenboden`,
           dtstart: toICSDateTime(datum, kurs.uhrzeit),
           dtend: addMinutesToICS(datum, kurs.uhrzeit, dauer),
-          summary: `${basisName} · ${typLabel}${online} (${i + 1}/${kurs.termine})`,
+          summary: `${basisName}${online} (${i + 1}/${termine.length})`,
+          location: ort,
         });
       });
     } else if (kurs.start_datum) {
@@ -133,27 +142,20 @@ export default async (req) => {
       const key = `${kurs.course_type}|${basisName.toLowerCase()}|serie|${toICSDateTime(kurs.start_datum, kurs.uhrzeit)}`;
       if (gesehen.has(key)) continue;
       gesehen.add(key);
-      const online = kurs.ist_online ? " (Online)" : "";
       events.push({
         uid: `${kurs.id}-serie@bauch-baby-beckenboden`,
         dtstart: toICSDateTime(kurs.start_datum, kurs.uhrzeit),
         dtend: addMinutesToICS(kurs.start_datum, kurs.uhrzeit, dauer),
-        summary: `${basisName} · ${typLabel}${online}`,
+        summary: `${basisName}${online}`,
+        location: ort,
         rrule: `FREQ=WEEKLY;COUNT=${kurs.termine || 1}`,
       });
     }
   }
 
-  // Hessische Schulferien als Ganztagestermine (Enddatum ist exklusiv)
-  for (const [start, end, name] of FERIEN) {
-    events.push({
-      uid: `ferien-${start}@bauch-baby-beckenboden`,
-      allDay: true,
-      dtstart: start.replace(/-/g, ""),
-      dtend: plusDaysISO(end, 1),
-      summary: `Hessen: ${name}`,
-    });
-  }
+  const kalenderName = gefiltert
+    ? `${[...new Set(sortiert.map((k) => String(k.name || "").replace(/\s*\(?online\)?\s*$/i, "").trim()))].join(" + ")} · Bauch · Baby · Beckenboden`
+    : "Bauch · Baby · Beckenboden Kurse";
 
   const lines = [
     "BEGIN:VCALENDAR",
@@ -161,24 +163,21 @@ export default async (req) => {
     "PRODID:-//Bauch Baby Beckenboden//Kursplan//DE",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
-    "X-WR-CALNAME:Bauch · Baby · Beckenboden Kurse",
+    foldLine(`X-WR-CALNAME:${escapeICS(kalenderName)}`),
     "X-WR-TIMEZONE:Europe/Berlin",
+    "REFRESH-INTERVAL;VALUE=DURATION:PT6H",
+    "X-PUBLISHED-TTL:PT6H",
   ];
 
   events.forEach((e) => {
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:${e.uid}`);
     lines.push(`DTSTAMP:${nowStamp()}`);
-    if (e.allDay) {
-      lines.push(`DTSTART;VALUE=DATE:${e.dtstart}`);
-      lines.push(`DTEND;VALUE=DATE:${e.dtend}`);
-      lines.push("TRANSP:TRANSPARENT");
-    } else {
-      lines.push(`DTSTART:${e.dtstart}`);
-      lines.push(`DTEND:${e.dtend}`);
-    }
+    lines.push(`DTSTART:${e.dtstart}`);
+    lines.push(`DTEND:${e.dtend}`);
     if (e.rrule) lines.push(`RRULE:${e.rrule}`);
     lines.push(foldLine(`SUMMARY:${escapeICS(e.summary)}`));
+    if (e.location) lines.push(foldLine(`LOCATION:${escapeICS(e.location)}`));
     lines.push("END:VEVENT");
   });
 

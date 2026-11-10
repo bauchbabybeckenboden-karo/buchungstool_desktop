@@ -52,7 +52,7 @@ function terminDatenOderRange(course) {
 // gepflegter Setmore-Einbindung (Tabler-Icons, "Wenige Plätze
 // verfügbar"-Hinweis, Pin + Terminliste) - hier automatisch aus den
 // Kursdaten erzeugt statt manuell im HTML-Block getippt.
-function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect }) {
+function TerminBox({ course, partner, label, comboLabel, spotsLeft, selected, onSelect }) {
   const datum = course.termin_daten?.[0] || course.start_datum
   const zeitpunkt = `${formatDatumDE(datum)} · ${course.uhrzeit || ''}`.trim()
   // Der Kursname wird mit in die kleine Beschriftungszeile aufgenommen, damit
@@ -91,6 +91,8 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
 
   const ausgebucht = spotsLeft !== null && spotsLeft <= 0
   const terminliste = formatTerminlisteKurz(terminDatenOderRange(course))
+  const partnerListe = partner ? formatTerminlisteKurz(terminDatenOderRange(partner)) : ''
+  const partnerLabel = partner ? (getCourseTypeBySlug(partner.course_type)?.label || partner.course_type) : ''
 
   // Grundpreis: entweder Karos manuell gesetzter Rabattpreis (falls für den
   // Kurs aktiviert) oder der normale Listenpreis. Wer erst nach Kursbeginn
@@ -99,7 +101,7 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
   // Rabatt nicht mit der automatischen Späte-Anmeldung-Reduzierung verwechselt
   // wird.
   const grundpreis = effektiverGrundpreis(course)
-  const effektivPreis = reduzierterPreis(grundpreis, course)
+  const effektivPreis = reduzierterPreis(grundpreis, course, partner)
   const rabattiert = grundpreis < Number(course.preis)
   const spaeterReduziert = effektivPreis < grundpreis
 
@@ -136,6 +138,11 @@ function TerminBox({ course, label, comboLabel, spotsLeft, selected, onSelect })
           )}
         </p>
         {terminliste && <p className={styles.termineDatesLine}>📍 {terminliste}</p>}
+        {partner && (
+          <p className={styles.termineDatesLine}>
+            + {partnerLabel} ({partner.name}): 📍 {partnerListe}
+          </p>
+        )}
       </div>
       {!ausgebucht && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
     </div>
@@ -317,8 +324,8 @@ function ExtraFields({ courseTypeSlug, values, onChange }) {
 // laufenden Kurs geht.
 function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis }) {
   return (
-    <div className={styles.section}>
-      <h3>Zusätzliche Buchung zum bereits laufenden Kurs</h3>
+    <div style={{ margin: '18px 0 8px' }}>
+      <h3>Zusätzliche Buchung zu gleichzeitig laufendem Kurs</h3>
       <div className={styles.checkboxGroup}>
         <input
           type="checkbox"
@@ -327,13 +334,13 @@ function KombiWunschSection({ values, onChange, kombiWunschPreis, normalPreis })
           onChange={(e) => onChange('kombiWunsch', e.target.checked)}
         />
         <label htmlFor="kombiWunsch">
-          Ich bin bereits bei einem <strong>laufenden</strong> Kurs angemeldet & buche diesen Kurs zusätzlich.
+          Ich bin zu einem anderen Kurs bei Wunderwerk Frau angemeldet, der im <strong>gleichen Zeitraum</strong> läuft.
         </label>
       </div>
       {values.kombiWunsch && (
         <div className={styles.infoBox}>
-          Wie schön! 💕 Der Preis für den zusätzlichen Kurs ist <strong>{kombiWunschPreis}€</strong> (10 % Rabatt
-          auf den Originalpreis). Warte mit der Überweisung bitte auf meine Bestätigungsmail. 🌿 Vielen Dank, dass
+          Wie schön! 💕 Der Preis für den zusätzlichen Kurs ist <strong>{kombiWunschPreis}€</strong> (10 € Rabatt
+          auf den Originalpreis, weil Du zwei Kurse gleichzeitig besuchst). Warte mit der Überweisung bitte auf meine Bestätigungsmail. 🌿 Vielen Dank, dass
           Du dabei bist!
         </div>
       )}
@@ -418,6 +425,8 @@ export default function Booking() {
   const [loadError, setLoadError] = useState(null)
   const [pakete, setPakete] = useState([])
   const [bookingCounts, setBookingCounts] = useState({})
+  const [partnerMap, setPartnerMap] = useState({})
+  const [kalenderKursIds, setKalenderKursIds] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [selectedPaketId, setSelectedPaketId] = useState('')
   const [general, setGeneral] = useState(initialGeneral)
@@ -553,7 +562,30 @@ export default function Booking() {
     return () => { active = false }
   }, [])
 
+  // Partnerkurse von Kombikursen (z.B. Mamafit zu einem Körpermitte-Kurs)
+  // nachladen - sie liegen nicht zwingend in der oben geladenen Liste.
+  useEffect(() => {
+    const ids = [...new Set(courses.map((c) => c.kombi_partner_id).filter(Boolean))]
+    if (ids.length === 0) { setPartnerMap({}); return }
+    let active = true
+    supabase
+      .from('kurse')
+      .select('*')
+      .in('id', ids)
+      .then(({ data }) => {
+        if (!active) return
+        const map = {}
+        ;(data || []).forEach((k) => { map[k.id] = k })
+        setPartnerMap(map)
+      })
+    return () => { active = false }
+  }, [courses])
+
+  const partnerVon = (c) => (c && c.kombi_partner_id ? partnerMap[c.kombi_partner_id] || null : null)
+  const istKombiKurs = (c) => Boolean(c) && ((c.zusatz_course_types || []).length > 0 || Boolean(c.kombi_partner_id))
+
   const selectedCourse = courses.find((c) => c.id === selectedId)
+  const selectedPartner = partnerVon(selectedCourse)
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
 
   // Effektiver (ggf. rabattierter und/oder reduzierter) Preis für die aktuelle
@@ -561,7 +593,7 @@ export default function Booking() {
   // damit beide übereinstimmen (siehe pricing.js: effektiverGrundpreis,
   // reduzierterPreis).
   const grundpreisKurs = selectedCourse ? effektiverGrundpreis(selectedCourse) : null
-  const effektivPreisKurs = selectedCourse ? reduzierterPreis(grundpreisKurs, selectedCourse) : null
+  const effektivPreisKurs = selectedCourse ? reduzierterPreis(grundpreisKurs, selectedCourse, selectedPartner) : null
   const rabattiertKurs = selectedCourse ? grundpreisKurs < Number(selectedCourse.preis) : false
   const effektivPreisPaket = selectedPaket
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
@@ -575,16 +607,18 @@ export default function Booking() {
   // Wochentag) - siehe KombiWunschSection oben. Gilt NICHT für Kurs-Pakete
   // (selectedPaket), die sind als EINE gemeinsame Neu-Buchung zweier Kurse
   // schon ihr eigener Mechanismus.
-  const zeigeKombiWunsch = Boolean(selectedCourse)
+  // Bei Kombikursen (Kurs mit Partnerkurs oder Zusatz-Kursart) ist der Kombi-Preis
+  // schon im Kurspreis enthalten - dort wird der Hinweis gar nicht angezeigt.
+  const zeigeKombiWunsch = Boolean(selectedCourse) && !istKombiKurs(selectedCourse)
 
-  // Kombi-Wunsch-Preis: pauschal 10% auf den ohnehin angezeigten Preis des
+  // Kombi-Wunsch-Preis: pauschal 10 € Rabatt (wie beim Kombikurs) auf den ohnehin angezeigten Preis des
   // PLUS-Kurses, aufgerundet auf den vollen Euro - NICHT auf den bereits
   // laufenden Kurs, den bekommt die Teilnehmerin ja schon zum normalen Preis.
   // Anders als beim "echten" Kombi-Paket (zwei gleichzeitig gebuchte Kurse)
   // ist hier sofort ein fester Preis bekannt, ohne Datenbank-Abfrage - die
   // Bestätigung, ob die Teilnehmerin tatsächlich im anderen Kurs angemeldet
   // ist, passiert serverseitig beim Mailversand (send-booking-emails.mjs).
-  const kombiWunschPreis = zeigeKombiWunsch ? Math.ceil(effektivPreisKurs * 0.9) : null
+  const kombiWunschPreis = zeigeKombiWunsch ? Math.max(0, Math.ceil(effektivPreisKurs) - 10) : null
 
   // Online-Kurse sollen in jeder Liste immer ganz unten stehen, hinter den
   // Präsenzterminen - Array.sort ist stabil, die sonstige Reihenfolge (nach
@@ -600,9 +634,21 @@ export default function Booking() {
   const primaerKurse = (vorabKursId ? courses : courses.filter((c) => c.course_type === courseTypeSlug)).sort(onlineZuletzt)
   const komboKurse = vorabKursId ? [] : courses.filter((c) => c.course_type !== courseTypeSlug).sort(onlineZuletzt)
 
-  function spotsLeftFuer(course) {
+  function platzFrei(course) {
     if (!course.max_teilnehmerinnen) return null
     return course.max_teilnehmerinnen - (bookingCounts[course.id] || 0)
+  }
+
+  // Bei einem Kombikurs zählt der knappere der beiden Kurse - eine Anmeldung
+  // belegt in beiden einen Platz.
+  function spotsLeftFuer(course) {
+    const eigene = platzFrei(course)
+    const partner = partnerVon(course)
+    if (!partner) return eigene
+    const beiPartner = platzFrei(partner)
+    if (eigene === null) return beiPartner
+    if (beiPartner === null) return eigene
+    return Math.min(eigene, beiPartner)
   }
 
   // Ein Kombi-Paket ist so lange buchbar, wie in BEIDEN zugrundeliegenden
@@ -686,9 +732,9 @@ export default function Booking() {
 
     // Die AGB-Zustimmung wird als Nachweis mit in "zusatzfelder" gespeichert
     // (JSON-Spalte, keine neue Datenbank-Spalte nötig).
-    const basisZusatzfelder = extra.kombiWunsch
+    const basisZusatzfelder = zeigeKombiWunsch && extra.kombiWunsch
       ? { ...extra, kombiPreisGeschaetzt: kombiWunschPreis ?? null }
-      : extra
+      : { ...extra, kombiWunsch: false }
 
     const basisDaten = {
       vorname: general.vorname,
@@ -735,6 +781,7 @@ export default function Booking() {
       }
 
       setSubmitting(false)
+      setKalenderKursIds([selectedPaket.kurs1.id, selectedPaket.kurs2.id])
       setSubmitted(true)
 
       fetch('/.netlify/functions/send-booking-emails', {
@@ -749,6 +796,41 @@ export default function Booking() {
       return
     }
 
+    // Kombikurs mit Partnerkurs (z.B. Körpermitte + Mamafit): EINE Anmeldung,
+    // technisch zwei verknüpfte Zeilen (je eine pro Kurs) in EINEM Insert -
+    // so belegt sie in beiden Kursen einen Platz und steht in beiden
+    // Teilnehmerinnenlisten. Verknüpfung über zusatzfelder.kombiGruppe.
+    if (selectedPartner) {
+      const kombiGruppe = crypto.randomUUID()
+      const zf = { ...basisDaten.zusatzfelder, kombiGruppe }
+      const { error } = await insertBuchungMitRetry([
+        { ...basisDaten, zusatzfelder: zf, kurs_id: selectedCourse.id },
+        { ...basisDaten, zusatzfelder: zf, kurs_id: selectedPartner.id },
+      ])
+      setSubmitting(false)
+      if (error) {
+        setSubmitError(fehlermeldung(error))
+        return
+      }
+      setKalenderKursIds([selectedCourse.id, selectedPartner.id])
+      setSubmitted(true)
+      fetch('/.netlify/functions/send-booking-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          buchung: { ...general, zusatzfelder: zf },
+          paket: {
+            name: `${selectedCourse.name} + ${selectedPartner.name}`,
+            bezeichnung: 'Kombikurs',
+            preis: effektivPreisKurs,
+            kurse: [selectedCourse, selectedPartner],
+          },
+          gutschein: gutscheinFuerMail,
+        }),
+      }).catch(() => {})
+      return
+    }
+
     const { error } = await insertBuchungMitRetry({ ...basisDaten, kurs_id: selectedCourse.id })
 
     setSubmitting(false)
@@ -756,6 +838,7 @@ export default function Booking() {
       setSubmitError(fehlermeldung(error))
       return
     }
+    setKalenderKursIds([selectedCourse.id])
     setSubmitted(true)
 
     // E-Mails verschicken (Bestätigung an Teilnehmerin + Benachrichtigung an Karo).
@@ -775,8 +858,26 @@ export default function Booking() {
     return (
       <div className={styles.container}>
         <div className={styles.details}>
-          <h3>Vielen Dank für deine Anmeldung!</h3>
+          <h3>Vielen Dank für Deine Anmeldung!</h3>
           <p>Du erhältst in Kürze eine Bestätigungsemail.</p>
+          {kalenderKursIds.length > 0 && (() => {
+            const kalenderUrl = `${window.location.origin}/.netlify/functions/kalender-feed?${kalenderKursIds.map((id) => `kurs=${id}`).join('&')}`
+            const kalenderWebcal = kalenderUrl.replace(/^https?:/, 'webcal:')
+            return (
+              <div style={{ marginTop: 18 }}>
+                <p><strong>Deine Kurstermine im Kalender</strong></p>
+                <p>
+                  <a href={kalenderWebcal} target="_top">Kurstermine im Kalender abonnieren</a>
+                </p>
+                <p style={{ fontSize: 13 }}>
+                  Die Termine aktualisieren sich automatisch, falls sich etwas ändert. Bei Google Kalender: Link
+                  kopieren und unter "Weitere Kalender" – "Per URL" einfügen:
+                  <br />
+                  <span style={{ wordBreak: 'break-all' }}>{kalenderUrl}</span>
+                </p>
+              </div>
+            )
+          })()}
         </div>
       </div>
     )
@@ -833,6 +934,21 @@ export default function Booking() {
                 </span>
               )
             )}
+            {selectedPartner && (
+              <>
+                <span className={styles.datesBig} style={{ marginTop: 14 }}>
+                  {getCourseTypeBySlug(selectedPartner.course_type)?.label || selectedPartner.course_type} · {selectedPartner.name}
+                </span>
+                <span className={styles.datesBig}>{selectedPartner.termine} Termine à {selectedPartner.dauer_min} mins</span>
+                {selectedPartner.termin_daten && selectedPartner.termin_daten.length > 0 && (
+                  <div className={styles.terminListe}>
+                    {selectedPartner.termin_daten.map((datum) => (
+                      <span key={datum} className={styles.terminDatum}>{formatDatumDE(datum)}</span>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
             <span className={styles.price}>
               {zeigeKombiWunsch && extra.kombiWunsch ? (
                 'Preis siehe Anmeldung'
@@ -858,15 +974,6 @@ export default function Booking() {
       </div>
 
       <form className={styles.form} onSubmit={handleSubmit}>
-        {zeigeKombiWunsch && (
-          <KombiWunschSection
-            values={extra}
-            onChange={(field, value) => setExtra({ ...extra, [field]: value })}
-            kombiWunschPreis={kombiWunschPreis}
-            normalPreis={effektivPreisKurs}
-          />
-        )}
-
         <div className={styles.section}>
           <h3>Deine Angaben</h3>
           <div className={styles.row}>
@@ -905,6 +1012,15 @@ export default function Booking() {
               <input type="text" required value={general.ort} onChange={(e) => setGeneral({ ...general, ort: e.target.value })} />
             </div>
           </div>
+          {zeigeKombiWunsch && (
+            <KombiWunschSection
+              values={extra}
+              onChange={(field, value) => setExtra({ ...extra, [field]: value })}
+              kombiWunschPreis={kombiWunschPreis}
+              normalPreis={effektivPreisKurs}
+            />
+          )}
+
           <div className={styles.checkboxGroup}>
             <input type="checkbox" id="dsgvo" required checked={general.dsgvo} onChange={(e) => setGeneral({ ...general, dsgvo: e.target.checked })} />
             <label htmlFor="dsgvo">Ich habe die Datenschutzerklärung gelesen und akzeptiert *</label>
@@ -987,6 +1103,7 @@ export default function Booking() {
           <Fragment key={c.id}>
             <TerminBox
               course={c}
+              partner={partnerVon(c)}
               label={wochentagVonKurs(c)}
               spotsLeft={spotsLeftFuer(c)}
               selected={selectedId === c.id}
@@ -999,6 +1116,7 @@ export default function Booking() {
           <Fragment key={c.id}>
             <TerminBox
               course={c}
+              partner={partnerVon(c)}
               label="Kombi-Kurse"
               comboLabel={getCourseTypeBySlug(c.course_type)?.label || c.course_type}
               spotsLeft={spotsLeftFuer(c)}

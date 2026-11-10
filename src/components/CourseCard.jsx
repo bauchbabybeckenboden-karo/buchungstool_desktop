@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import styles from './CourseCard.module.css'
 import { getCourseTypeBySlug, COURSE_TYPES } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { calculatePreis } from '../pricing.js'
+import { calculatePreis, calculateKombiPartnerPreis } from '../pricing.js'
 import { formatDatumDE, ersterTermin } from '../dateUtils.js'
 
 // Kursname inkl. erstem Termin, für Auswahl-Dropdowns - ohne Datum sind
@@ -13,7 +13,7 @@ function kursLabelMitDatum(kurs) {
   return datum ? `${kurs.name} (ab ${datum})` : kurs.name
 }
 
-export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSave, onReload, collapsed, onToggleCollapsed }) {
+export default function CourseCard({ course, siblingCourses, alleKurse = [], onUpdateLocal, onSave, onReload, collapsed, onToggleCollapsed }) {
   const [showParticipants, setShowParticipants] = useState(false)
   const [participants, setParticipants] = useState([])
   const [participantsError, setParticipantsError] = useState(null)
@@ -58,9 +58,17 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
     handleField('zusatz_course_types', next)
   }
 
-  function recalcPreis() {
-    const neuerPreis = calculatePreis(course.course_type, course.termine, course.zusatz_course_types || [])
+  function recalcPreis(partnerId = course.kombi_partner_id) {
+    const partner = partnerId ? alleKurse.find((c) => c.id === partnerId) : null
+    const neuerPreis = partner
+      ? calculateKombiPartnerPreis(course.course_type, course.termine, partner.course_type, partner.termine)
+      : calculatePreis(course.course_type, course.termine, course.zusatz_course_types || [])
     if (neuerPreis !== null) handleField('preis', neuerPreis)
+  }
+
+  async function setzePartner(partnerId) {
+    await handleField('kombi_partner_id', partnerId || null)
+    recalcPreis(partnerId || null)
   }
 
   async function removeParticipant(participant) {
@@ -75,6 +83,23 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
       if (!bestaetigt) return
 
       const { error } = await supabase.from('buchungen').delete().eq('paket_id', participant.paket_id).eq('email', participant.email)
+      if (error) {
+        alert('Entfernen erfordert Admin-Login (noch einzurichten).')
+        return
+      }
+      loadParticipants()
+      return
+    }
+
+    // Kombikurs mit Partnerkurs: zwei verknüpfte Zeilen (gleiche kombiGruppe) -
+    // beim Entfernen wird die Teilnehmerin aus beiden Kursen genommen.
+    const kombiGruppe = participant.zusatzfelder?.kombiGruppe
+    if (kombiGruppe) {
+      const bestaetigt = window.confirm(
+        'Das ist eine Kombikurs-Anmeldung. Beim Entfernen wird die Teilnehmerin aus BEIDEN Kursen entfernt. Fortfahren?'
+      )
+      if (!bestaetigt) return
+      const { error } = await supabase.from('buchungen').delete().filter('zusatzfelder->>kombiGruppe', 'eq', kombiGruppe)
       if (error) {
         alert('Entfernen erfordert Admin-Login (noch einzurichten).')
         return
@@ -351,7 +376,7 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
                         const wert = e.target.value === '' ? null : Number(e.target.value)
                         if (wert !== (p.zusatzfelder.kombiPreisGeschaetzt ?? null)) setKombiPreis(p, wert)
                       }}
-                      title="Preis von Hand anpassen (Vorschlag: 10% Rabatt) - wirkt sich auf die Bestätigungsmail aus"
+                      title="Preis von Hand anpassen (Vorschlag: 10 € Rabatt) - wirkt sich auf die Bestätigungsmail aus"
                       style={{ width: '55px', fontSize: '11px', padding: '1px 4px' }}
                     />
                     €)
@@ -417,6 +442,26 @@ export default function CourseCard({ course, siblingCourses, onUpdateLocal, onSa
             </label>
           ))}
         </div>
+        {(course.zusatz_course_types || []).length > 0 && (
+          <div style={{ marginTop: 10 }}>
+            <span className={styles.comboLabel}>
+              Partnerkurs für die Kombi (wird auf der Buchungsseite mit allen Terminen gezeigt, eine Anmeldung belegt in beiden Kursen einen Platz):
+            </span>
+            <select
+              value={course.kombi_partner_id || ''}
+              onChange={(e) => setzePartner(e.target.value)}
+            >
+              <option value="">— keiner —</option>
+              {alleKurse
+                .filter((c) => c.id !== course.id && (course.zusatz_course_types || []).includes(c.course_type))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {(getCourseTypeBySlug(c.course_type)?.label || c.course_type)}: {kursLabelMitDatum(c)}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className={styles.checkboxRow}>

@@ -33,6 +33,15 @@ export function calculatePreis(courseTypeSlug, termine, zusatzCourseTypes = []) 
   return preisCents / 100
 }
 
+// Preis eines Kombikurses mit Partnerkurs (z.B. Körpermitte + Mamafit): beide
+// Teilpreise nach der jeweiligen Terminzahl, abzüglich 10 € Kombi-Rabatt.
+export function calculateKombiPartnerPreis(slug1, termine1, slug2, termine2) {
+  const p1 = komponentenPreisCents(slug1, termine1)
+  const p2 = komponentenPreisCents(slug2, termine2)
+  if (p1 === null || p2 === null) return null
+  return (p1 + p2 - 1000) / 100
+}
+
 // Preisformel für Kombi-Pakete (zwei eigenständige, unabhängige Kurse zu einer
 // gemeinsamen Buchung gebündelt - anders als der Kombikurs-Rabatt oben, der
 // denselben Kurs nur auf einer zweiten Kursseite zusätzlich anzeigt).

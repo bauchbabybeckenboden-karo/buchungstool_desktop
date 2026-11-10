@@ -253,6 +253,7 @@ export default function Admin() {
                         key={course.id}
                         course={course}
                         siblingCourses={coursesForActiveType}
+                        alleKurse={courses}
                         onUpdateLocal={updateCourseLocal}
                         onSave={saveCourse}
                         onReload={loadCourses}
