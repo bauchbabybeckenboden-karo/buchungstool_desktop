@@ -1,11 +1,30 @@
-// Verschickt nach einer Buchung zwei E-Mails über Resend:
+// Verschickt nach einer Buchung zwei E-Mails über iCloud+ (kontakt@wunderwerk-frau.de):
 // 1. Bestätigung an die Teilnehmerin
 // 2. Benachrichtigung an Karo (im Setmore-"Neue Teilnehmerin"-Stil) inkl. Visitenkarte(n) zum Abspeichern
 
 import { createClient } from "@supabase/supabase-js";
+import nodemailer from "nodemailer";
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM = "Bauch Baby Beckenboden <kontakt@bauch-baby-beckenboden.com>";
+// Versand über iCloud+ (eigene Domain wunderwerk-frau.de).
+// Zugangsdaten NUR als Netlify-Umgebungsvariablen, nie im Code:
+//   ICLOUD_SMTP_USER = Apple-ID-Mailadresse (Haupt-iCloud-Adresse)
+//   ICLOUD_SMTP_PASS = app-spezifisches Passwort (account.apple.com)
+const ICLOUD_SMTP_USER = process.env.ICLOUD_SMTP_USER;
+const ICLOUD_SMTP_PASS = process.env.ICLOUD_SMTP_PASS;
+const transporter =
+  ICLOUD_SMTP_USER && ICLOUD_SMTP_PASS
+    ? nodemailer.createTransport({
+        host: "smtp.mail.me.com",
+        port: 587,
+        secure: false,
+        requireTLS: true,
+        auth: { user: ICLOUD_SMTP_USER, pass: ICLOUD_SMTP_PASS },
+      })
+    : null;
+
+const KONTAKT_EMAIL = "kontakt@wunderwerk-frau.de";
+const FROM = `"Karo · Wunderwerk Frau" <${KONTAKT_EMAIL}>`;
+// Benachrichtigungen an Karo selbst
 const ADMIN_EMAIL = "kontakt@bauch-baby-beckenboden.com";
 
 // Für den Kombi-Wunsch-Namensabgleich (siehe findeBereitsAngemeldet unten)
@@ -25,6 +44,24 @@ const BANK = {
   bic: "GENODEF1S12",
 };
 const FRAGEBOGEN_URL = "https://bauch-baby-beckenboden-weiterleitung.netlify.app";
+
+// Karos Visitenkarte (Kontakt speichern, damit Mails nicht im Spam landen)
+const VISITENKARTE_URL = "https://bauch-baby-beckenboden.de/wp-content/uploads/2026/11/karo_4.vcf";
+
+// Gemeinsame Bausteine für alle Mails an Teilnehmerinnen (Wunderwerk Frau)
+const VISITENKARTE_HTML = `
+              <p style="margin:0 0 12px;font-size:14px;">PS: Speichere Dir bitte meine Visitenkarte, um sicherzustellen, dass nichts im Spam landet.</p>
+              <p style="margin:0 0 24px;"><a href="${VISITENKARTE_URL}" style="display:inline-block;background:#8B6464;color:#F3E9E5;text-decoration:none;padding:10px 22px;border-radius:22px;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Kontakt speichern</a></p>`;
+
+const SIGNATUR_HTML = `<p style="margin:0;">Ich freue mich doll!<br/>Deine Karo <span style="color:#C0392B;">&#9830;</span></p>`;
+
+const FOOTER_HTML = `
+            <div style="background:#8B6464;padding:22px 36px;color:#F3E9E5;text-align:center;line-height:1.6;">
+              <div style="font-family:Georgia,serif;font-size:20px;letter-spacing:1px;">Wunderwerk Frau</div>
+              <div style="width:140px;height:1px;background:#F3E9E5;margin:6px auto;"></div>
+              <div style="font-size:11px;letter-spacing:3px;margin-bottom:10px;">BAUCH · BABY · BECKENBODEN</div>
+              <a href="https://bauch-baby-beckenboden.de" style="color:#F3E9E5;font-size:12px;">bauch-baby-beckenboden.de</a>
+            </div>`;
 
 // Abo-Link für die Kurstermine der Teilnehmerin (Funktion kalender-feed):
 // aktualisiert sich im Kalender automatisch, auch bei Ausfällen/Verschiebungen.
@@ -219,20 +256,21 @@ function base64(str) {
   return Buffer.from(str, "utf-8").toString("base64");
 }
 
-async function sendResend(payload) {
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
+// Verschickt eine Mail über iCloud+. Anhänge kommen als Base64 (wie bisher).
+async function sendMail({ from, to, subject, html, attachments }) {
+  return transporter.sendMail({
+    from,
+    to,
+    replyTo: KONTAKT_EMAIL,
+    subject,
+    html,
+    attachments: (attachments || []).map((a) => ({
+      filename: a.filename,
+      content: a.content,
+      encoding: "base64",
+      contentType: a.filename.endsWith(".vcf") ? "text/vcard" : undefined,
+    })),
   });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Resend ${res.status}: ${text}`);
-  }
-  return res.json();
 }
 
 // Wird aufgerufen, wenn Karo im Admin-Bereich einen Kombi-Wunsch nachträglich
@@ -259,15 +297,16 @@ async function sendeKombiBestaetigungsMail(buchungId) {
   const courseTypeLabel = kurs ? COURSE_TYPE_LABELS[kurs.course_type] || kurs.course_type : "";
   const preis = buchung.zusatzfelder?.kombiPreisGeschaetzt ?? kurs?.preis ?? "?";
 
-  await sendResend({
+  await sendMail({
     from: FROM,
     to: buchung.email,
-    subject: `Bestätigt: dein Zusatzkurs${courseTypeLabel ? ` ${courseTypeLabel}` : ""}`,
+    subject: `Bestätigt: Dein Zusatzkurs${courseTypeLabel ? ` ${courseTypeLabel}` : ""}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px 20px;color:#333;">
         <p>Liebe ${escapeHtml(buchung.vorname || "")},</p>
-        <p>ich konnte deinen Kombi-Wunsch jetzt bestätigen! Dein Preis für den Zusatzkurs${courseTypeLabel ? ` (${escapeHtml(courseTypeLabel)})` : ""} ist damit final: <strong>${preis} €</strong>. Du kannst jetzt gerne überweisen.</p>
-        <p>Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
+        <p>ich konnte Deinen Kombi-Wunsch jetzt bestätigen! Dein Preis für den Zusatzkurs${courseTypeLabel ? ` (${escapeHtml(courseTypeLabel)})` : ""} ist damit final: <strong>${preis} €</strong>. Du kannst jetzt gerne überweisen.</p>
+        ${SIGNATUR_HTML}
+        <p style="margin:16px 0 0;font-size:12px;color:#8B6464;">Wunderwerk Frau · Bauch · Baby · Beckenboden</p>
       </div>`,
   });
 
@@ -276,7 +315,7 @@ async function sendeKombiBestaetigungsMail(buchungId) {
 
 export default async (req) => {
   if (req.method !== "POST") return new Response("POST erwartet", { status: 405 });
-  if (!RESEND_API_KEY) return new Response("RESEND_API_KEY fehlt", { status: 500 });
+  if (!transporter) return new Response("ICLOUD_SMTP_USER / ICLOUD_SMTP_PASS fehlen", { status: 500 });
 
   try {
     const body = await req.json();
@@ -344,7 +383,7 @@ export default async (req) => {
               </table>
               <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus (einmal reicht für beide Kurse).</p>
 
-              <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst du wöchentlich daran erinnert, dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
+              <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst Du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${KONTAKT_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst Du wöchentlich daran erinnert, Dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
 
               <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Deine Kurstermine</p>
               ${kurse.map(kursBlockHtml).join("")}
@@ -354,17 +393,17 @@ export default async (req) => {
                 <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
               </p>
 
-              <p style="margin:0 0 24px;">💕 Solltest du Fragen haben, melde dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für dein Vertrauen 💕</p>
+              <p style="margin:0 0 24px;">💕 Solltest Du Fragen haben, melde Dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für Dein Vertrauen 💕</p>
 
-              <p style="margin:0;">Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
+              ${SIGNATUR_HTML}
+              <div style="height:24px;"></div>
+              ${VISITENKARTE_HTML}
             </div>
-            <div style="background:#F6EBE8;padding:20px 36px;font-size:12px;color:#8B6464;text-align:center;line-height:1.6;">
-              Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8B6464;">bauch-baby-beckenboden.de</a>
-            </div>
+            ${FOOTER_HTML}
           </div>
         </div>`;
 
-      await sendResend({
+      await sendMail({
         from: FROM,
         to: buchung.email,
         subject: `Deine Anmeldung: ${name}`,
@@ -441,7 +480,7 @@ export default async (req) => {
         },
       ];
 
-      await sendResend({
+      await sendMail({
         from: FROM,
         to: ADMIN_EMAIL,
         subject: `${buchung.vorname} ${buchung.nachname} ${bezeichnung} ${name}`,
@@ -498,7 +537,7 @@ export default async (req) => {
             <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
           </div>
           <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
-            <p style="margin:0 0 18px;">vielen Dank für deine Anmeldung zu <strong style="font-weight:600;">${escapeHtml(courseTypeLabel)}</strong>!</p>
+            <p style="margin:0 0 18px;">vielen Dank für Deine Anmeldung zu <strong style="font-weight:600;">${escapeHtml(courseTypeLabel)}</strong>!</p>
 
             <hr style="border:none;border-top:1px solid #F6EBE8;margin:24px 0;"/>
 
@@ -512,7 +551,7 @@ export default async (req) => {
             </table>
             <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus.</p>
 
-            <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${ADMIN_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst du wöchentlich daran erinnert, dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
+            <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst Du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${KONTAKT_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst Du wöchentlich daran erinnert, Dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
 
             <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Deine Kurstermine</p>
             <p style="margin:0 0 18px;font-size:14px;">
@@ -527,23 +566,23 @@ export default async (req) => {
               zusatz.kombiWunsch
                 ? `<p style="margin:0 0 18px;background:#F6EBE8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, zu einem anderen Kurs bei Wunderwerk Frau angemeldet zu sein, der im gleichen Zeitraum läuft, und diesen Kurs zusätzlich zu buchen. ${
                     kombiCheck?.gefunden
-                      ? `Ich konnte deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Du kannst direkt überweisen.`
-                      : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Bitte überweise noch nicht, ich melde mich bei dir, sobald ich es geprüft habe.`
+                      ? `Ich konnte Deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – Dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Du kannst direkt überweisen.`
+                      : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – Dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Bitte überweise noch nicht, ich melde mich bei Dir, sobald ich es geprüft habe.`
                   }</p>`
                 : ""
             }
 
-            <p style="margin:0 0 24px;">💕 Solltest du Fragen haben, melde dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für dein Vertrauen 💕</p>
+            <p style="margin:0 0 24px;">💕 Solltest Du Fragen haben, melde Dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für Dein Vertrauen 💕</p>
 
-            <p style="margin:0;">Ich freue mich doll!<br/>Deine 🌿 Karo ♦️<br/>Bauch · Baby · Beckenboden</p>
+            ${SIGNATUR_HTML}
+            <div style="height:24px;"></div>
+            ${VISITENKARTE_HTML}
           </div>
-          <div style="background:#F6EBE8;padding:20px 36px;font-size:12px;color:#8B6464;text-align:center;line-height:1.6;">
-            Bauch · Baby · Beckenboden · <a href="https://bauch-baby-beckenboden.de" style="color:#8B6464;">bauch-baby-beckenboden.de</a>
-          </div>
+          ${FOOTER_HTML}
         </div>
       </div>`;
 
-    await sendResend({
+    await sendMail({
       from: FROM,
       to: buchung.email,
       subject: `Deine Anmeldung: ${kursBezeichnung}`,
@@ -617,7 +656,7 @@ export default async (req) => {
       },
     ];
 
-    await sendResend({
+    await sendMail({
       from: FROM,
       to: ADMIN_EMAIL,
       subject: `${
