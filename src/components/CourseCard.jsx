@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import styles from './CourseCard.module.css'
 import { getCourseTypeBySlug, COURSE_TYPES } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { calculatePreis, calculateKombiPartnerPreis } from '../pricing.js'
+import { calculatePreis } from '../pricing.js'
 import { formatDatumDE, ersterTermin } from '../dateUtils.js'
 
 // Kursname inkl. erstem Termin, für Auswahl-Dropdowns - ohne Datum sind
@@ -58,17 +58,17 @@ export default function CourseCard({ course, siblingCourses, alleKurse = [], onU
     handleField('zusatz_course_types', next)
   }
 
-  function recalcPreis(partnerId = course.kombi_partner_id) {
-    const partner = partnerId ? alleKurse.find((c) => c.id === partnerId) : null
-    const neuerPreis = partner
-      ? calculateKombiPartnerPreis(course.course_type, course.termine, partner.course_type, partner.termine)
-      : calculatePreis(course.course_type, course.termine, course.zusatz_course_types || [])
+  // Gespeichert wird immer nur der EINZELPREIS (Termine x Satz). Der Kombi-Preis
+  // mit einem Partnerkurs wird auf der Buchungsseite live aus beiden Kursen berechnet.
+  function recalcPreis() {
+    const neuerPreis = calculatePreis(course.course_type, course.termine, [])
     if (neuerPreis !== null) handleField('preis', neuerPreis)
   }
 
-  async function setzePartner(partnerId) {
-    await handleField('kombi_partner_id', partnerId || null)
-    recalcPreis(partnerId || null)
+  function togglePartner(partnerId) {
+    const current = course.kombi_partner_ids || []
+    const next = current.includes(partnerId) ? current.filter((x) => x !== partnerId) : [...current, partnerId]
+    handleField('kombi_partner_ids', next)
   }
 
   async function removeParticipant(participant) {
@@ -445,21 +445,20 @@ export default function CourseCard({ course, siblingCourses, alleKurse = [], onU
         {(course.zusatz_course_types || []).length > 0 && (
           <div style={{ marginTop: 10 }}>
             <span className={styles.comboLabel}>
-              Partnerkurs für die Kombi (wird auf der Buchungsseite mit allen Terminen gezeigt, eine Anmeldung belegt in beiden Kursen einen Platz):
+              Zusätzliche Partnerkurse (Sonderfall - Kombis zeitgleicher Kurse werden automatisch gefunden):
             </span>
-            <select
-              value={course.kombi_partner_id || ''}
-              onChange={(e) => setzePartner(e.target.value)}
-            >
-              <option value="">— keiner —</option>
-              {alleKurse
-                .filter((c) => c.id !== course.id && (course.zusatz_course_types || []).includes(c.course_type))
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {(getCourseTypeBySlug(c.course_type)?.label || c.course_type)}: {kursLabelMitDatum(c)}
-                  </option>
-                ))}
-            </select>
+            {alleKurse
+              .filter((c) => c.id !== course.id && (course.zusatz_course_types || []).includes(c.course_type))
+              .map((c) => (
+                <label key={c.id} className={styles.comboOption} style={{ display: 'block' }}>
+                  <input
+                    type="checkbox"
+                    checked={(course.kombi_partner_ids || []).includes(c.id)}
+                    onChange={() => togglePartner(c.id)}
+                  />
+                  {(getCourseTypeBySlug(c.course_type)?.label || c.course_type)}: {kursLabelMitDatum(c)}
+                </label>
+              ))}
           </div>
         )}
       </div>

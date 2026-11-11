@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine, einzelPreis } from '../pricing.js'
+import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine, einzelPreis, kombiPreis } from '../pricing.js'
 
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
@@ -52,6 +52,29 @@ function terminDatenOderRange(course) {
 // gepflegter Setmore-Einbindung (Tabler-Icons, "Wenige Plätze
 // verfügbar"-Hinweis, Pin + Terminliste) - hier automatisch aus den
 // Kursdaten erzeugt statt manuell im HTML-Block getippt.
+// Welche Kurstypen als Kombi zusammen gebucht werden können (gilt automatisch für
+// alle Kurse, die zeitgleich laufen - Karo muss nichts pro Kurs einstellen).
+const KOMBI_REGELN = {
+  'somatic-yoga': ['koerpermitte-beckenboden'],
+  'koerpermitte-beckenboden': ['mamafit', 'somatic-yoga'],
+  mamafit: ['koerpermitte-beckenboden'],
+}
+const ALLE_KOMBI_TYPEN = [...new Set(Object.entries(KOMBI_REGELN).flat(2))]
+
+function laeuftZeitgleich(a, b) {
+  if (!a.start_datum || !b.start_datum) return false
+  const aEnde = a.end_datum || a.start_datum
+  const bEnde = b.end_datum || b.start_datum
+  return a.start_datum <= bEnde && b.start_datum <= aEnde
+}
+
+// Manuell im Admin gesetzte Zusatz-Partner (Sonderfälle, normalerweise leer).
+function manuellePartnerIds(c) {
+  if (!c) return []
+  if (Array.isArray(c.kombi_partner_ids) && c.kombi_partner_ids.length > 0) return c.kombi_partner_ids
+  return c.kombi_partner_id ? [c.kombi_partner_id] : []
+}
+
 function TerminBox({ course, partner, solo, label, comboLabel, spotsLeft, selected, onSelect }) {
   const datum = course.termin_daten?.[0] || course.start_datum
   const zeitpunkt = `${formatDatumDE(datum)} · ${course.uhrzeit || ''}`.trim()
@@ -67,7 +90,7 @@ function TerminBox({ course, partner, solo, label, comboLabel, spotsLeft, select
   const kombiMit = comboLabel || solo ? [] : (course.zusatz_course_types || []).map((slug) => getCourseTypeBySlug(slug)?.label || slug)
   const beschriftungBasis = label ? `${label} · ${course.name}` : course.name
   const beschriftung = solo
-    ? `${beschriftungBasis} · nur dieser Kurs`
+    ? beschriftungBasis
     : kombiMit.length > 0 ? `${beschriftungBasis} · Kombi mit ${kombiMit.join(' & ')}` : beschriftungBasis
   let titelText
   let istWarnung = false
@@ -102,9 +125,9 @@ function TerminBox({ course, partner, solo, label, comboLabel, spotsLeft, select
   // pricing.js) - beides wird unten getrennt angezeigt, damit ein echter
   // Rabatt nicht mit der automatischen Späte-Anmeldung-Reduzierung verwechselt
   // wird.
-  const grundpreis = solo ? einzelPreis(course) : effektiverGrundpreis(course)
+  const grundpreis = solo ? einzelPreis(course) : partner ? kombiPreis(course, partner) : effektiverGrundpreis(course)
   const effektivPreis = reduzierterPreis(grundpreis, course, partner)
-  const rabattiert = !solo && grundpreis < Number(course.preis)
+  const rabattiert = !solo && !partner && grundpreis < Number(course.preis)
   const spaeterReduziert = effektivPreis < grundpreis
 
   const klassen = [styles.termineBox]
@@ -430,7 +453,7 @@ export default function Booking() {
   const [partnerMap, setPartnerMap] = useState({})
   const [kalenderKursIds, setKalenderKursIds] = useState([])
   const [kalenderNur, setKalenderNur] = useState(false)
-  const [soloModus, setSoloModus] = useState(false)
+  const [partnerSel, setPartnerSel] = useState('')
   const [selectedId, setSelectedId] = useState('')
   const [selectedPaketId, setSelectedPaketId] = useState('')
   const [general, setGeneral] = useState(initialGeneral)
@@ -569,45 +592,61 @@ export default function Booking() {
   // Partnerkurse von Kombikursen (z.B. Mamafit zu einem Körpermitte-Kurs)
   // nachladen - sie liegen nicht zwingend in der oben geladenen Liste.
   useEffect(() => {
-    const ids = [...new Set(courses.map((c) => c.kombi_partner_id).filter(Boolean))]
-    if (ids.length === 0) { setPartnerMap({}); return }
+    const ids = [...new Set(courses.flatMap((c) => manuellePartnerIds(c)))]
     let active = true
-    supabase
-      .from('kurse')
-      .select('*')
-      .in('id', ids)
-      .then(({ data }) => {
-        if (!active) return
-        const map = {}
-        ;(data || []).forEach((k) => { map[k.id] = k })
-        setPartnerMap(map)
-      })
+    Promise.all([
+      supabase.from('kurse').select('*').eq('sichtbar_auf_website', true).in('course_type', ALLE_KOMBI_TYPEN),
+      ids.length > 0 ? supabase.from('kurse').select('*').in('id', ids) : Promise.resolve({ data: [] }),
+    ]).then(([auto, manuell]) => {
+      if (!active) return
+      const map = {}
+      ;[...(auto.data || []), ...(manuell.data || [])].forEach((k) => { map[k.id] = k })
+      setPartnerMap(map)
+    })
     return () => { active = false }
   }, [courses])
 
-  const partnerVon = (c) => (c && c.kombi_partner_id ? partnerMap[c.kombi_partner_id] || null : null)
-  // Kachel wählen/abwählen; solo = "nur dieser Kurs" statt Kombi mit Partnerkurs.
-  function waehleKurs(id, solo) {
-    if (selectedId === id && soloModus === solo) setSelectedId('')
-    else { setSelectedId(id); setSoloModus(solo) }
+  // Partner = manuell gesetzte + automatisch gefundene (laut KOMBI_REGELN, sichtbar,
+  // noch nicht beendet, läuft zeitgleich).
+  const heuteISO = new Date().toISOString().slice(0, 10)
+  const partnerIdsVon = (c) => {
+    if (!c) return []
+    const auto = Object.values(partnerMap)
+      .filter(
+        (p) =>
+          p.id !== c.id &&
+          p.sichtbar_auf_website &&
+          (KOMBI_REGELN[c.course_type] || []).includes(p.course_type) &&
+          (p.end_datum || p.start_datum) >= heuteISO &&
+          laeuftZeitgleich(c, p)
+      )
+      .sort((x, y) => (x.start_datum || '').localeCompare(y.start_datum || ''))
+      .map((p) => p.id)
+    return [...new Set([...manuellePartnerIds(c), ...auto])]
+  }
+  const partnerListeVon = (c) => partnerIdsVon(c).map((id) => partnerMap[id]).filter(Boolean)
+  // Kachel wählen/abwählen; partnerId '' = nur dieser Kurs, sonst Kombi mit diesem Partnerkurs.
+  function waehleKurs(id, partnerId) {
+    if (selectedId === id && partnerSel === partnerId) setSelectedId('')
+    else { setSelectedId(id); setPartnerSel(partnerId) }
     setSelectedPaketId('')
   }
-  const istKombiKurs = (c) => Boolean(c) && ((c.zusatz_course_types || []).length > 0 || Boolean(c.kombi_partner_id))
+  const istKombiKurs = (c) => Boolean(c) && ((c.zusatz_course_types || []).length > 0 || partnerIdsVon(c).length > 0)
 
   const selectedCourse = courses.find((c) => c.id === selectedId)
   // Bei einem Kurs mit Partnerkurs gibt es zwei Kacheln: "nur dieser Kurs" (Einzelpreis)
   // und die Kombi mit Partnerkurs. soloModus merkt sich, welche gewählt ist.
-  const istSolo = soloModus && Boolean(partnerVon(selectedCourse))
-  const selectedPartner = istSolo ? null : partnerVon(selectedCourse)
+  const istSolo = !partnerSel && partnerListeVon(selectedCourse).length > 0
+  const selectedPartner = partnerSel ? partnerListeVon(selectedCourse).find((x) => x.id === partnerSel) || null : null
   const selectedPaket = pakete.find((p) => p.id === selectedPaketId)
 
   // Effektiver (ggf. rabattierter und/oder reduzierter) Preis für die aktuelle
   // Auswahl - wird für Anzeige UND die verschickte Bestätigungsmail verwendet,
   // damit beide übereinstimmen (siehe pricing.js: effektiverGrundpreis,
   // reduzierterPreis).
-  const grundpreisKurs = selectedCourse ? (istSolo ? einzelPreis(selectedCourse) : effektiverGrundpreis(selectedCourse)) : null
+  const grundpreisKurs = selectedCourse ? (istSolo ? einzelPreis(selectedCourse) : selectedPartner ? kombiPreis(selectedCourse, selectedPartner) : effektiverGrundpreis(selectedCourse)) : null
   const effektivPreisKurs = selectedCourse ? reduzierterPreis(grundpreisKurs, selectedCourse, selectedPartner) : null
-  const rabattiertKurs = selectedCourse && !istSolo ? grundpreisKurs < Number(selectedCourse.preis) : false
+  const rabattiertKurs = selectedCourse && !istSolo && !selectedPartner ? grundpreisKurs < Number(selectedCourse.preis) : false
   const effektivPreisPaket = selectedPaket
     ? reduzierterPreis(selectedPaket.preis, selectedPaket.kurs1, selectedPaket.kurs2)
     : null
@@ -651,7 +690,7 @@ export default function Booking() {
     ? []
     : courses
         .filter((c) => c.course_type !== courseTypeSlug)
-        .filter((c) => !primaerKurse.some((p) => p.kombi_partner_id === c.id || c.kombi_partner_id === p.id))
+        .filter((c) => !primaerKurse.some((p) => partnerIdsVon(p).includes(c.id) || partnerIdsVon(c).includes(p.id)))
         .sort(onlineZuletzt)
 
   function platzFrei(course) {
@@ -661,9 +700,8 @@ export default function Booking() {
 
   // Bei einem Kombikurs zählt der knappere der beiden Kurse - eine Anmeldung
   // belegt in beiden einen Platz.
-  function spotsLeftFuer(course) {
+  function spotsLeftFuer(course, partner) {
     const eigene = platzFrei(course)
-    const partner = partnerVon(course)
     if (!partner) return eigene
     const beiPartner = platzFrei(partner)
     if (eigene === null) return beiPartner
@@ -1120,42 +1158,44 @@ export default function Booking() {
         {!loading && !loadError && courses.length === 0 && (
           <p className={styles.emptyLight}>Aktuell sind keine {courseType.label}-Kurse zur Anmeldung freigegeben.</p>
         )}
-        {primaerKurse.map((c) => (
-          <Fragment key={c.id}>
-            {partnerVon(c) && (
-              <>
-                <TerminBox
-                  course={c}
-                  solo
-                  label={wochentagVonKurs(c)}
-                  spotsLeft={platzFrei(c)}
-                  selected={selectedId === c.id && soloModus}
-                  onSelect={(id) => waehleKurs(id, true)}
-                />
-                {selectedId === c.id && soloModus && anmeldeFormular}
-              </>
-            )}
-            <TerminBox
-              course={c}
-              partner={partnerVon(c)}
-              label={wochentagVonKurs(c)}
-              spotsLeft={spotsLeftFuer(c)}
-              selected={selectedId === c.id && (!soloModus || !partnerVon(c))}
-              onSelect={(id) => waehleKurs(id, false)}
-            />
-            {selectedId === c.id && (!soloModus || !partnerVon(c)) && anmeldeFormular}
-          </Fragment>
-        ))}
+        {primaerKurse.map((c) => {
+          const ps = partnerListeVon(c)
+          return (
+            <Fragment key={c.id}>
+              <TerminBox
+                course={c}
+                solo={ps.length > 0}
+                label={wochentagVonKurs(c)}
+                spotsLeft={platzFrei(c)}
+                selected={selectedId === c.id && !partnerSel}
+                onSelect={() => waehleKurs(c.id, '')}
+              />
+              {selectedId === c.id && !partnerSel && anmeldeFormular}
+              {ps.map((p) => (
+                <Fragment key={p.id}>
+                  <TerminBox
+                    course={c}
+                    partner={p}
+                    label={wochentagVonKurs(c)}
+                    spotsLeft={spotsLeftFuer(c, p)}
+                    selected={selectedId === c.id && partnerSel === p.id}
+                    onSelect={() => waehleKurs(c.id, p.id)}
+                  />
+                  {selectedId === c.id && partnerSel === p.id && anmeldeFormular}
+                </Fragment>
+              ))}
+            </Fragment>
+          )
+        })}
         {komboKurse.map((c) => (
           <Fragment key={c.id}>
             <TerminBox
               course={c}
-              partner={partnerVon(c)}
               label="Kombi-Kurse"
               comboLabel={getCourseTypeBySlug(c.course_type)?.label || c.course_type}
-              spotsLeft={spotsLeftFuer(c)}
+              spotsLeft={platzFrei(c)}
               selected={selectedId === c.id}
-              onSelect={(id) => waehleKurs(id, false)}
+              onSelect={(id) => waehleKurs(id, '')}
             />
             {selectedId === c.id && anmeldeFormular}
           </Fragment>

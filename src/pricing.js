@@ -49,6 +49,13 @@ export function calculateKombiPartnerPreis(slug1, termine1, slug2, termine2) {
   return (p1 + p2 - 1000) / 100
 }
 
+// Kombi-Preis zweier Kurse live aus deren Terminzahlen (Einzelpreise werden nicht
+// kombiniert gespeichert).
+export function kombiPreis(course, partner) {
+  const p = calculateKombiPartnerPreis(course.course_type, course.termine, partner.course_type, partner.termine)
+  return p !== null ? p : Number(course.preis) + Number(partner.preis) - 10
+}
+
 // Preisformel für Kombi-Pakete (zwei eigenständige, unabhängige Kurse zu einer
 // gemeinsamen Buchung gebündelt - anders als der Kombikurs-Rabatt oben, der
 // denselben Kurs nur auf einer zweiten Kursseite zusätzlich anzeigt).
