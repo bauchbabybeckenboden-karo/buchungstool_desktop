@@ -138,9 +138,11 @@ export default function CourseCard({ course, siblingCourses, alleKurse = [], onU
       prev.map((p) => (p.id === participant.id ? { ...p, kombi_wunsch_bestaetigt: wert } : p))
     )
     if (wert) {
+      // Admin-Login mitschicken - die Funktion prüft serverseitig, dass Karo eingeloggt ist.
+      const { data: { session } } = await supabase.auth.getSession()
       fetch('/.netlify/functions/send-booking-emails', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` },
         body: JSON.stringify({ action: 'kombiBestaetigung', buchungId: participant.id }),
       }).catch(() => {})
     }

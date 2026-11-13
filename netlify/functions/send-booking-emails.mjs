@@ -1,41 +1,46 @@
-// Verschickt nach einer Buchung zwei E-Mails über iCloud+ (kontakt@wunderwerk-frau.de):
+// Verschickt nach einer Buchung zwei E-Mails über Resend (Absender kontakt@wunderwerk-frau.de):
 // 1. Bestätigung an die Teilnehmerin
-// 2. Benachrichtigung an Karo (im Setmore-"Neue Teilnehmerin"-Stil) inkl. Visitenkarte(n) zum Abspeichern
+// 2. Benachrichtigung an Karo (im Setmore-"Neue Teilnehmerin"-Stil) inkl. Visitenkarte zum Abspeichern
+//
+// SICHERHEIT (Stand 13.11.2026):
+// - Die Funktion übernimmt aus dem Browser nur noch E-Mail-Adresse und Kurs-IDs.
+//   Name, Adresse, Kursdaten, Gutschein und Preis werden serverseitig aus der
+//   Datenbank geladen bzw. berechnet. So kann niemand über diese Funktion Mails
+//   mit eigenem Inhalt an fremde Adressen verschicken.
+// - Mails gehen nur raus, wenn es eine passende Buchung gibt, die höchstens
+//   30 Minuten alt ist und noch keine Bestätigung bekommen hat
+//   (Spalte buchungen.bestaetigung_gesendet_at). Jede Buchung also genau einmal.
+// - Admin-Aktionen ("kombiBestaetigung", "nachsenden") nur mit gültigem
+//   Admin-Login (Supabase-Token), geprüft hier auf dem Server.
+//
+// Netlify-Umgebungsvariablen (nie im Code):
+//   RESEND_API_KEY            = API-Key des Resend-Accounts "Wunderwerk Frau"
+//   ADMIN_LOGIN_EMAIL         = E-Mail, mit der Karo sich im Admin-Bereich anmeldet
+//   VITE_SUPABASE_URL         = (vorhanden)
+//   SUPABASE_SERVICE_ROLE_KEY = (vorhanden)
 
 import { createClient } from "@supabase/supabase-js";
-import nodemailer from "nodemailer";
+import { reduzierterPreis, effektiverGrundpreis, einzelPreis, kombiPreis } from "../../src/pricing.js";
 
-// Versand über iCloud+ (eigene Domain wunderwerk-frau.de).
-// Zugangsdaten NUR als Netlify-Umgebungsvariablen, nie im Code:
-//   ICLOUD_SMTP_USER = Apple-ID-Mailadresse (Haupt-iCloud-Adresse)
-//   ICLOUD_SMTP_PASS = app-spezifisches Passwort (account.apple.com)
-const ICLOUD_SMTP_USER = process.env.ICLOUD_SMTP_USER;
-const ICLOUD_SMTP_PASS = process.env.ICLOUD_SMTP_PASS;
-const transporter =
-  ICLOUD_SMTP_USER && ICLOUD_SMTP_PASS
-    ? nodemailer.createTransport({
-        host: "smtp.mail.me.com",
-        port: 587,
-        secure: false,
-        requireTLS: true,
-        auth: { user: ICLOUD_SMTP_USER, pass: ICLOUD_SMTP_PASS },
-      })
-    : null;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const ADMIN_LOGIN_EMAIL = (process.env.ADMIN_LOGIN_EMAIL || "").trim().toLowerCase();
 
 const KONTAKT_EMAIL = "kontakt@wunderwerk-frau.de";
 const FROM = `"Karo · Wunderwerk Frau" <${KONTAKT_EMAIL}>`;
 // Benachrichtigungen an Karo selbst
 const ADMIN_EMAIL = "kontakt@bauch-baby-beckenboden.com";
 
-// Für den Kombi-Wunsch-Namensabgleich (siehe findeBereitsAngemeldet unten)
-// braucht es Lesezugriff auf "buchungen" - der öffentliche anon-Key darf das
-// aus Datenschutzgründen nicht (siehe Booking.jsx). Deshalb hier bewusst der
-// SUPABASE_SERVICE_ROLE_KEY, der NUR als Netlify-Umgebungsvariable existiert
-// und niemals ins Frontend/den Browser gelangt (anders als die VITE_*-Werte).
+// Wie lange nach dem Speichern einer Buchung die Bestätigung noch über den
+// öffentlichen Aufruf (Buchungsseite) ausgelöst werden darf.
+const MAX_ALTER_MINUTEN = 30;
+
+// Service-Role-Key NUR als Netlify-Umgebungsvariable, gelangt nie in den Browser.
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseAdmin =
-  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY) : null;
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+    : null;
 
 // Feste Angaben für die Bestätigungsmail (aktuell für alle Kurse gleich).
 const BANK = {
@@ -86,24 +91,18 @@ const COURSE_TYPE_LABELS = {
   "koerpermitte-beckenboden": "Körpermitte & Beckenboden",
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function json(daten, status = 200) {
+  return new Response(JSON.stringify(daten), { status, headers: { "Content-Type": "application/json" } });
+}
+
 // Prüft per Namensabgleich (Vor- + Nachname, ohne Groß-/Kleinschreibung und
 // führende/folgende Leerzeichen), ob bereits eine Buchung in IRGENDEINEM
-// ANDEREN Kurs existiert (ausschlussKursId schließt nur den gerade neu
-// gebuchten Kurs selbst aus, damit ein Treffer nicht fälschlich die eigene,
-// soeben erst angelegte Buchung findet) - das ist die einzige Grundlage, auf
-// der der "Kombi-Wunsch" automatisch bestätigt wird (statt dass Karo jede
-// Anfrage von Hand mit ihren Kurslisten abgleichen muss). Ein Treffer wird
-// bewusst nur bei exakter Namensübereinstimmung gewertet - Tippfehler/
-// Spitznamen führen zu "nicht gefunden" und damit zur manuellen Prüfung durch
-// Karo, nie zu einer fälschlich automatisch bestätigten Buchung.
-//
-// Ursprünglich nur auf die Kursarten "somatic-yoga"/"mamafit" beschränkt
-// (galt nur für Körpermitte-Kombis) - jetzt bewusst kursartübergreifend, denn
-// "ich bin schon woanders angemeldet" gilt genauso für zwei Kurse DERSELBEN
-// Art (z.B. schon donnerstags Schwangerfit, jetzt zusätzlich montags).
+// ANDEREN Kurs existiert. Nur bei exakter Namensübereinstimmung ein Treffer -
+// Tippfehler/Spitznamen führen zur manuellen Prüfung durch Karo, nie zu einer
+// fälschlich automatisch bestätigten Buchung.
 async function findeBereitsAngemeldet(vorname, nachname, ausschlussKursId) {
-  if (!supabaseAdmin) return { geprueft: false, gefunden: false, kursLabel: null };
-
   const vornameTrim = (vorname || "").trim();
   const nachnameTrim = (nachname || "").trim();
   if (!vornameTrim || !nachnameTrim) return { geprueft: true, gefunden: false, kursLabel: null };
@@ -133,33 +132,6 @@ async function findeBereitsAngemeldet(vorname, nachname, ausschlussKursId) {
   };
 }
 
-// Schreibt das Ergebnis der automatischen Kombi-Wunsch-Pruefung dauerhaft in
-// die Buchung zurueck (Spalte kombi_wunsch_bestaetigt) - sonst stuende das
-// Ergebnis NUR einmalig in dieser Admin-Mail und waere danach nirgends mehr
-// nachvollziehbar (Karo-Frage: "woher weiss meine HP, dass ich das akzeptiert
-// habe"). Der Insert der Buchung selbst passiert VORHER im Browser (anon-Key,
-// siehe Booking.jsx) - hier wird die frisch angelegte Zeile per
-// kurs_id+vorname+nachname+email wiedergefunden (neueste zuerst, falls
-// dieselbe Person zufaellig mehrfach im selben Kurs steht) und aktualisiert.
-// Best-effort: schlaegt das UPDATE fehl, bleibt die Mail trotzdem die
-// verlaessliche Quelle fuer diese eine Buchung, es wird nur kein Fehler nach
-// aussen geworfen.
-async function speichereKombiBestaetigung(kursId, vorname, nachname, email, bestaetigt) {
-  if (!supabaseAdmin) return;
-  const { data: zeilen } = await supabaseAdmin
-    .from("buchungen")
-    .select("id")
-    .eq("kurs_id", kursId)
-    .ilike("vorname", (vorname || "").trim())
-    .ilike("nachname", (nachname || "").trim())
-    .ilike("email", (email || "").trim())
-    .order("created_at", { ascending: false })
-    .limit(1);
-  const zeile = (zeilen || [])[0];
-  if (!zeile) return;
-  await supabaseAdmin.from("buchungen").update({ kombi_wunsch_bestaetigt: bestaetigt }).eq("id", zeile.id);
-}
-
 const WOCHENTAGE = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
 const WOCHENTAGE_KURZ = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const MONATE_KURZ = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
@@ -180,12 +152,18 @@ function addMinutes(uhrzeit, minuten) {
 }
 
 function escapeHtml(str) {
-  return String(str || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return String(str ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Preise immer mit Komma und ggf. zwei Nachkommastellen (182 -> "182", 96.5 -> "96,50").
+function formatPreis(preis) {
+  const n = Number(preis);
+  if (!Number.isFinite(n)) return "?";
+  return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(".", ",");
 }
 
 // vCard-TEXT-Werte (z.B. NOTE) müssen Backslash, Komma, Semikolon und
-// Zeilenumbrüche escapen (RFC 6350) - sonst werden mehrzeilige Notizen beim
-// Import in die Kontakte-App abgeschnitten oder falsch dargestellt.
+// Zeilenumbrüche escapen (RFC 6350).
 function vCardEscapeText(str) {
   return String(str || "")
     .replace(/\\/g, "\\\\")
@@ -209,10 +187,7 @@ function vCard({ vorname, nachname, telefon, email, strasse, plz, ort, note }) {
   return lines.join("\r\n");
 }
 
-// Fasst Geburtstermin/ET und Notfallkontakt in EINER Notiz für den
-// Kontakt-Eintrag zusammen, statt (wie bisher beim Notfallkontakt) einen
-// zweiten, separaten Kontakt anzulegen - so bleibt alles an einer Stelle,
-// direkt im Kontakt der Teilnehmerin.
+// Geburtstermin/ET und Notfallkontakt in EINER Notiz im Kontakt der Teilnehmerin.
 function kontaktNotizen(zusatz) {
   const zeilen = [];
   if (zusatz.et) zeilen.push(`Geburtstermin: ${formatDatumEinfach(zusatz.et)}`);
@@ -223,13 +198,12 @@ function kontaktNotizen(zusatz) {
 }
 function formatDatumEinfach(isoDatum) {
   if (!isoDatum) return "";
-  const [y, m, d] = isoDatum.split("-");
+  const [y, m, d] = String(isoDatum).split("-");
   return `${d}.${m}.${y}`;
 }
 
 // Emoji + Monat/Jahr vor den Nachnamen im Kontakt, damit Karo auf einen
-// Blick sieht, aus welchem Kurs (und Durchlauf) eine Teilnehmerin kommt,
-// ohne den Kontakt extra öffnen zu müssen.
+// Blick sieht, aus welchem Kurs (und Durchlauf) eine Teilnehmerin kommt.
 const KURS_KONTAKT_EMOJI = {
   mamafit: "👶🏼",
   schwangerfit: "🤰",
@@ -256,112 +230,157 @@ function base64(str) {
   return Buffer.from(str, "utf-8").toString("base64");
 }
 
-// Verschickt eine Mail über iCloud+. Anhänge kommen als Base64 (wie bisher).
-async function sendMail({ from, to, subject, html, attachments }) {
-  return transporter.sendMail({
-    from,
-    to,
-    replyTo: KONTAKT_EMAIL,
-    subject,
-    html,
-    attachments: (attachments || []).map((a) => ({
-      filename: a.filename,
-      content: a.content,
-      encoding: "base64",
-      contentType: a.filename.endsWith(".vcf") ? "text/vcard" : undefined,
-    })),
+// Verschickt eine Mail über Resend. Wirft bei jedem Fehler (inkl. Antwort von
+// Resend), damit nichts mehr stillschweigend verloren geht. Der
+// Idempotency-Key verhindert, dass dieselbe Mail doppelt rausgeht, falls die
+// Funktion zweimal ausgelöst wird.
+async function sendMail({ to, subject, html, attachments, idempotencyKey }) {
+  const headers = {
+    Authorization: `Bearer ${RESEND_API_KEY}`,
+    "Content-Type": "application/json",
+  };
+  if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      from: FROM,
+      to: [to],
+      reply_to: KONTAKT_EMAIL,
+      subject,
+      html,
+      attachments: (attachments || []).map((a) => ({ filename: a.filename, content: a.content })),
+    }),
   });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Resend ${res.status}: ${text}`);
+  }
+  return res.json();
 }
 
-// Wird aufgerufen, wenn Karo im Admin-Bereich einen Kombi-Wunsch nachträglich
-// manuell bestätigt (Button "manuell bestätigen" in CourseCard.jsx) - die
-// automatische Prüfung beim Buchungseingang hat dann keinen Treffer gefunden,
-// die Teilnehmerin wartet also noch auf die finale Bestätigung ("ich melde
-// mich, sobald ich es geprüft habe", siehe Bestätigungsmail beim Buchen).
-// Ohne diese Mail würde die manuelle Bestätigung NUR in der Admin-Ansicht
-// landen - die Teilnehmerin selbst würde nie davon erfahren (Karo-Frage:
-// "wie bekommen alle die Info, dass es ok ist").
-async function sendeKombiBestaetigungsMail(buchungId) {
-  if (!supabaseAdmin) return new Response(JSON.stringify({ error: "kein Admin-Zugriff konfiguriert" }), { status: 500 });
+// Prüft serverseitig, ob der Aufruf von Karo (eingeloggt im Admin-Bereich) kommt.
+async function istAdmin(req) {
+  if (!ADMIN_LOGIN_EMAIL) return false;
+  const header = req.headers.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!token) return false;
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user?.email) return false;
+  return data.user.email.trim().toLowerCase() === ADMIN_LOGIN_EMAIL;
+}
 
-  const { data: buchung, error: buchungError } = await supabaseAdmin
-    .from("buchungen")
-    .select("*")
-    .eq("id", buchungId)
-    .maybeSingle();
-  if (buchungError || !buchung) {
-    return new Response(JSON.stringify({ error: "Buchung nicht gefunden" }), { status: 404 });
+// Lädt die Kurse zu den Buchungszeilen (Reihenfolge wie die Zeilen).
+async function ladeKurse(zeilen) {
+  const ids = [...new Set(zeilen.map((z) => z.kurs_id))];
+  const { data, error } = await supabaseAdmin.from("kurse").select("*").in("id", ids);
+  if (error) throw new Error(`Kurse laden: ${error.message}`);
+  const map = Object.fromEntries((data || []).map((k) => [k.id, k]));
+  const kurse = zeilen.map((z) => map[z.kurs_id]);
+  if (kurse.some((k) => !k)) throw new Error("Kurs zur Buchung nicht gefunden");
+  return kurse;
+}
+
+// Ermittelt aus den Buchungszeilen (1 = Einzelkurs, 2 = Kombikurs oder
+// Kurs-Paket) alles, was die Mails brauchen. Preise werden hier auf dem
+// Server berechnet - genau wie auf der Buchungsseite (pricing.js).
+// preisVorschlag: beim Einzelkurs der Preis von der Buchungsseite bzw. von
+// Karo (Admin). Von der Buchungsseite wird er nur übernommen, wenn er einem
+// der beiden möglichen Preise entspricht (normal oder "nur dieser Kurs").
+async function bereiteBuchungAuf(zeilen, { preisVorschlag = null, preisVertrauen = false } = {}) {
+  let kurse = await ladeKurse(zeilen);
+  const erste = zeilen[0];
+  const buchung = {
+    vorname: (erste.vorname || "").trim(),
+    nachname: (erste.nachname || "").trim(),
+    email: (erste.email || "").trim(),
+    telefon: (erste.telefon || "").trim(),
+    strasse: (erste.strasse || "").trim(),
+    plz: (erste.plz || "").trim(),
+    ort: (erste.ort || "").trim(),
+    zusatzfelder: erste.zusatzfelder || {},
+  };
+  const gutschein = erste.hat_gutschein
+    ? { betrag: erste.gutschein_betrag, fotoUrl: erste.gutschein_foto_url || null }
+    : null;
+
+  if (zeilen.length === 2) {
+    if (erste.paket_id) {
+      const { data: paketRow } = await supabaseAdmin.from("kurs_pakete").select("*").eq("id", erste.paket_id).maybeSingle();
+      if (!paketRow) throw new Error("Kurs-Paket nicht gefunden");
+      const nachId = Object.fromEntries(kurse.map((k) => [k.id, k]));
+      kurse = [nachId[paketRow.kurs_id_1], nachId[paketRow.kurs_id_2]].filter(Boolean);
+      if (kurse.length !== 2) throw new Error("Kurse des Pakets passen nicht zur Buchung");
+      const preis = reduzierterPreis(paketRow.preis, kurse[0], kurse[1]);
+      return { art: "paket", buchung, gutschein, kurse, paket: { name: paketRow.name, bezeichnung: "Kurs-Paket", preis } };
+    }
+    kurse = [...kurse].sort((a, b) => (a.start_datum || "").localeCompare(b.start_datum || ""));
+    const preis = reduzierterPreis(kombiPreis(kurse[0], kurse[1]), kurse[0], kurse[1]);
+    return {
+      art: "paket",
+      buchung,
+      gutschein,
+      kurse,
+      paket: { name: `${kurse[0].name} + ${kurse[1].name}`, bezeichnung: "Kombikurs", preis },
+    };
   }
 
-  const { data: kurs } = await supabaseAdmin.from("kurse").select("*").eq("id", buchung.kurs_id).maybeSingle();
-  const courseTypeLabel = kurs ? COURSE_TYPE_LABELS[kurs.course_type] || kurs.course_type : "";
-  const preis = buchung.zusatzfelder?.kombiPreisGeschaetzt ?? kurs?.preis ?? "?";
-
-  await sendMail({
-    from: FROM,
-    to: buchung.email,
-    subject: `Bestätigt: Dein Zusatzkurs${courseTypeLabel ? ` ${courseTypeLabel}` : ""}`,
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px 20px;color:#333;">
-        <p>Liebe ${escapeHtml(buchung.vorname || "")},</p>
-        <p>ich konnte Deinen Kombi-Wunsch jetzt bestätigen! Dein Preis für den Zusatzkurs${courseTypeLabel ? ` (${escapeHtml(courseTypeLabel)})` : ""} ist damit final: <strong>${preis} €</strong>. Du kannst jetzt gerne überweisen.</p>
-        ${SIGNATUR_HTML}
-        <p style="margin:16px 0 0;font-size:12px;color:#8B6464;">Wunderwerk Frau · Bauch · Baby · Beckenboden</p>
-      </div>`,
-  });
-
-  return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const kurs = kurse[0];
+  const normal = reduzierterPreis(effektiverGrundpreis(kurs), kurs);
+  const solo = reduzierterPreis(einzelPreis(kurs), kurs);
+  const vorschlag = preisVorschlag != null && preisVorschlag !== "" ? Number(preisVorschlag) : null;
+  let preis = normal;
+  if (vorschlag != null && Number.isFinite(vorschlag) && vorschlag >= 0) {
+    if (preisVertrauen || vorschlag === normal || vorschlag === solo) preis = vorschlag;
+  }
+  return { art: "einzel", buchung, gutschein, kurse, kurs: { ...kurs, preis }, buchungId: erste.id };
 }
 
-export default async (req) => {
-  if (req.method !== "POST") return new Response("POST erwartet", { status: 405 });
-  if (!transporter) return new Response("ICLOUD_SMTP_USER / ICLOUD_SMTP_PASS fehlen", { status: 500 });
+// Baut und verschickt beide Mails. empfaenger: "beide" | "teilnehmerin" | "karo".
+// Beide Mails werden unabhängig verschickt - scheitert eine, geht die andere
+// trotzdem raus. Gibt zurück, was geklappt hat.
+async function sendeBuchungsMails(daten, { empfaenger = "beide", schluessel }) {
+  const { buchung, gutschein } = daten;
+  const zusatz = buchung.zusatzfelder || {};
+  const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
 
-  try {
-    const body = await req.json();
-
-    // Separater, schlanker Pfad für die nachträgliche Kombi-Wunsch-Bestätigung
-    // (siehe sendeKombiBestaetigungsMail oben) - kein Bezug zu einer frisch
-    // eingehenden Buchung, deshalb eigenständig statt im Rest der Funktion
-    // durchgeschleift.
-    if (body.action === "kombiBestaetigung") {
-      return await sendeKombiBestaetigungsMail(body.buchungId);
-    }
-
-    const { buchung, kurs, paket, gutschein } = body;
-    const zusatz = buchung.zusatzfelder || {};
-
-    // Gutschein-Hinweis für Karo - identisch für Einzelkurs- und
-    // Kurs-Paket-Admin-Mail (siehe unten, jeweils oben in adminHtml).
-    const gutscheinInfoHtml = gutschein
-      ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:1px solid #e0c26a;border-radius:6px;font-size:13px;color:#6b4e1e;">🎟️ Gutschein angegeben: <strong>${gutschein.betrag} €</strong>${gutschein.fotoUrl ? ` – <a href="${gutschein.fotoUrl}" style="color:#6b4e1e;">Foto ansehen</a>` : " (kein Foto hochgeladen)"}</div>`
+  const zeile = (label, value) =>
+    value
+      ? `<tr><td style="padding:4px 0;color:#8b93a1;font-size:12px;">${label}</td></tr><tr><td style="padding:0 0 12px 0;color:#111;font-size:14px;">${value}</td></tr>`
       : "";
 
-    // --- Kombi-Paket: eine gemeinsame Bestätigungsmail für beide gebündelten Kurse ---
-    if (paket) {
-      const { name, preis, kurse } = paket;
-      const bezeichnung = paket.bezeichnung || "Kurs-Paket";
-      const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
-      const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${name}`;
+  // Gutschein-Hinweis für Karo - identisch für Einzelkurs und Kombikurs/Paket.
+  const gutscheinInfoHtml = gutschein
+    ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#fdf0d5;border:1px solid #e0c26a;border-radius:6px;font-size:13px;color:#6b4e1e;">🎟️ Gutschein angegeben: <strong>${escapeHtml(formatPreis(gutschein.betrag))} €</strong>${gutschein.fotoUrl ? ` – <a href="${escapeHtml(gutschein.fotoUrl)}" style="color:#6b4e1e;">Foto ansehen</a>` : " (kein Foto hochgeladen)"}</div>`
+    : "";
 
-      const kursBlockHtml = (k) => {
-        const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
-        const uhrzeitEndeK = addMinutes(k.uhrzeit, k.dauer_min);
-        const terminZeilenK =
-          Array.isArray(k.termin_daten) && k.termin_daten.length > 0
-            ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
-            : [formatDatumKurz(k.start_datum), k.end_datum ? `bis ${formatDatumKurz(k.end_datum)}` : ""]
-                .filter(Boolean)
-                .join(" ");
-        return `
+  let teilnehmerin; // { subject, html }
+  let admin; // { subject, html, attachments }
+
+  if (daten.art === "paket") {
+    const { kurse } = daten;
+    const { name, bezeichnung } = daten.paket;
+    const preis = formatPreis(daten.paket.preis);
+    const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${name}`;
+
+    const kursBlockHtml = (k) => {
+      const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
+      const uhrzeitEndeK = addMinutes(k.uhrzeit, k.dauer_min);
+      const terminZeilenK =
+        Array.isArray(k.termin_daten) && k.termin_daten.length > 0
+          ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
+          : [formatDatumKurz(k.start_datum), k.end_datum ? `bis ${formatDatumKurz(k.end_datum)}` : ""]
+              .filter(Boolean)
+              .join(" ");
+      return `
           <p style="margin:0 0 4px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">${escapeHtml(label)}</p>
           <p style="margin:0 0 18px;font-size:14px;">
             ${terminZeilenK}<br/>
             ${k.uhrzeit ? `${k.uhrzeit}${uhrzeitEndeK ? " - " + uhrzeitEndeK : ""} Uhr<br/>` : ""}
           </p>`;
-      };
+    };
 
-      const teilnehmerinHtml = `
+    const html = `
         <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#F6EBE8;padding:32px 12px;">
           <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #F6EBE8;">
             <div style="background:linear-gradient(135deg,#8b6464,#8B6464);padding:32px 36px;color:#F6EBE8;">
@@ -402,40 +421,27 @@ export default async (req) => {
             ${FOOTER_HTML}
           </div>
         </div>`;
+    teilnehmerin = { subject: `Deine Anmeldung: ${name}`, html };
 
-      await sendMail({
-        from: FROM,
-        to: buchung.email,
-        subject: `Deine Anmeldung: ${name}`,
-        html: teilnehmerinHtml,
-      });
+    let notfallHtml = "";
+    if (kurse.some((k) => k.course_type === "schwangerfit") && (zusatz.notfallName || zusatz.notfallTel)) {
+      notfallHtml =
+        zeile("Notfallkontakt", escapeHtml(zusatz.notfallName || "")) +
+        zeile("Notfallkontakt Telefon", `<a href="tel:${escapeHtml(zusatz.notfallTel || "")}">${escapeHtml(zusatz.notfallTel || "")}</a>`);
+    }
 
-      const zeile = (label, value) =>
-        value
-          ? `<tr><td style="padding:4px 0;color:#8b93a1;font-size:12px;">${label}</td></tr><tr><td style="padding:0 0 12px 0;color:#111;font-size:14px;">${value}</td></tr>`
-          : "";
+    const wannTextPaket = kurse
+      .map((k) => {
+        const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
+        const terminZeilenK =
+          Array.isArray(k.termin_daten) && k.termin_daten.length > 0
+            ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
+            : formatDatumKurz(k.start_datum);
+        return `<strong>${escapeHtml(label)}</strong><br/>${terminZeilenK}`;
+      })
+      .join("<br/><br/>");
 
-      let notfallHtml = "";
-      kurse.forEach((k) => {
-        if (k.course_type === "schwangerfit" && (zusatz.notfallName || zusatz.notfallTel)) {
-          notfallHtml =
-            zeile("Notfallkontakt", escapeHtml(zusatz.notfallName || "")) +
-            zeile("Notfallkontakt Telefon", `<a href="tel:${escapeHtml(zusatz.notfallTel || "")}">${escapeHtml(zusatz.notfallTel || "")}</a>`);
-        }
-      });
-
-      const wannTextPaket = kurse
-        .map((k) => {
-          const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
-          const terminZeilenK =
-            Array.isArray(k.termin_daten) && k.termin_daten.length > 0
-              ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
-              : formatDatumKurz(k.start_datum);
-          return `<strong>${escapeHtml(label)}</strong><br/>${terminZeilenK}`;
-        })
-        .join("<br/><br/>");
-
-      const adminHtml = `
+    const adminHtml = `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:white;border:1px solid #eee;">
           <div style="padding:20px 20px 0 20px;">
             <div style="display:flex;align-items:center;gap:10px;">
@@ -446,7 +452,7 @@ export default async (req) => {
           </div>
           ${gutscheinInfoHtml}
           <table style="width:100%;padding:0 20px;border-collapse:collapse;">
-            ${zeile(bezeichnung, escapeHtml(name))}
+            ${zeile(escapeHtml(bezeichnung), escapeHtml(name))}
             ${zeile("Wann", wannTextPaket)}
             ${zeile("Preis", `${preis} €`)}
             ${zeile("Mit", "Karoline Hartwig")}
@@ -461,14 +467,17 @@ export default async (req) => {
           </table>
         </div>`;
 
-      const namePrefixPaket = kontaktNamePrefix(kurse);
-      const attachments = [
+    const namePrefix = kontaktNamePrefix(kurse);
+    admin = {
+      subject: `${buchung.vorname} ${buchung.nachname} ${bezeichnung} ${name}`,
+      html: adminHtml,
+      attachments: [
         {
           filename: `${buchung.vorname}-${buchung.nachname}.vcf`,
           content: base64(
             vCard({
               vorname: buchung.vorname,
-              nachname: namePrefixPaket ? `${namePrefixPaket} ${buchung.nachname}` : buchung.nachname,
+              nachname: namePrefix ? `${namePrefix} ${buchung.nachname}` : buchung.nachname,
               telefon: buchung.telefon,
               email: buchung.email,
               strasse: buchung.strasse,
@@ -478,49 +487,39 @@ export default async (req) => {
             })
           ),
         },
-      ];
-
-      await sendMail({
-        from: FROM,
-        to: ADMIN_EMAIL,
-        subject: `${buchung.vorname} ${buchung.nachname} ${bezeichnung} ${name}`,
-        html: adminHtml,
-        attachments,
-      });
-
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-
+      ],
+    };
+  } else {
+    const { kurs } = daten;
+    const preis = formatPreis(kurs.preis);
     const courseTypeLabel = COURSE_TYPE_LABELS[kurs.course_type] || kurs.course_type;
     const kursBezeichnung = `${courseTypeLabel} ${kurs.termine} Termine`;
-    const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
 
-    // "Ich buche zusätzlich zu einem laufenden Kurs" (Kombi-Wunsch, gilt für
-    // jede Einzelkurs-Buchung, siehe Booking.jsx) - der Preis (10% Rabatt auf
-    // den Zusatzkurs) wird im Buchungstool bereits fest berechnet
-    // (kombiPreisGeschaetzt). Automatisch ENDGÜLTIG bestätigt wird er nur,
-    // wenn sich der Name in einer anderen bestehenden Buchung findet
-    // (findeBereitsAngemeldet) - sonst bleibt es vorläufig und Karo bekommt
-    // eine auffällige Erinnerung.
-    const kombiPreisGeschaetzt = zusatz.kombiWunsch && zusatz.kombiPreisGeschaetzt != null ? zusatz.kombiPreisGeschaetzt : null;
-    const kombiCheck = zusatz.kombiWunsch
-      ? await findeBereitsAngemeldet(buchung.vorname, buchung.nachname, kurs.id)
-      : null;
-    if (zusatz.kombiWunsch) {
-      await speichereKombiBestaetigung(kurs.id, buchung.vorname, buchung.nachname, buchung.email, Boolean(kombiCheck?.gefunden));
+    // "Ich buche zusätzlich zu einem laufenden Kurs" (Kombi-Wunsch). Der
+    // vorgesehene Preis steht in der Buchung (kombiPreisGeschaetzt).
+    // Automatisch ENDGÜLTIG bestätigt wird er nur, wenn sich der Name in einer
+    // anderen bestehenden Buchung findet - sonst prüft Karo von Hand.
+    const kombiPreisGeschaetzt =
+      zusatz.kombiWunsch && zusatz.kombiPreisGeschaetzt != null ? formatPreis(zusatz.kombiPreisGeschaetzt) : null;
+    const kombiCheck = zusatz.kombiWunsch ? await findeBereitsAngemeldet(buchung.vorname, buchung.nachname, kurs.id) : null;
+    if (zusatz.kombiWunsch && daten.buchungId) {
+      // Ergebnis dauerhaft in der Buchung speichern (best effort).
+      await supabaseAdmin
+        .from("buchungen")
+        .update({ kombi_wunsch_bestaetigt: Boolean(kombiCheck?.gefunden) })
+        .eq("id", daten.buchungId)
+        .is("kombi_wunsch_bestaetigt", null);
     }
 
     const uhrzeitEnde = addMinutes(kurs.uhrzeit, kurs.dauer_min);
     const wochentagLang = kurs.start_datum ? WOCHENTAGE[new Date(kurs.start_datum + "T00:00:00").getDay()] : "";
 
-    // Wenn die echten Einzeltermine bekannt sind (aus der Kursabfrage, inkl. Pausenwochen),
-    // diese exakt auflisten statt "jede Woche" zu unterstellen (das stimmt bei Pausen nicht).
+    // Wenn die echten Einzeltermine bekannt sind, diese exakt auflisten.
     const wannText =
       Array.isArray(kurs.termin_daten) && kurs.termin_daten.length > 0
         ? kurs.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
         : `${formatDatumKurz(kurs.start_datum)}<br/>Jeder Woche am ${wochentagLang} für ${kurs.termine} Mal`;
 
-    // --- 1. Bestätigung an die Teilnehmerin ---
     const terminZeilen =
       Array.isArray(kurs.termin_daten) && kurs.termin_daten.length > 0
         ? kurs.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
@@ -529,7 +528,7 @@ export default async (req) => {
             .join(" ");
     const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${kursBezeichnung}`;
 
-    const teilnehmerinHtml = `
+    const html = `
       <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#F6EBE8;padding:32px 12px;">
         <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #F6EBE8;">
           <div style="background:linear-gradient(135deg,#8b6464,#8B6464);padding:32px 36px;color:#F6EBE8;">
@@ -542,7 +541,7 @@ export default async (req) => {
             <hr style="border:none;border-top:1px solid #F6EBE8;margin:24px 0;"/>
 
             <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Wie es weitergeht</p>
-            <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${kurs.preis} €</strong> auf folgendes Konto:</p>
+            <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${preis} €</strong> auf folgendes Konto:</p>
             <table style="width:100%;font-size:13px;margin:0 0 18px;border-collapse:collapse;">
               <tr><td style="padding:2px 0;color:#8B6464;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
               <tr><td style="padding:2px 0;color:#8B6464;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
@@ -557,7 +556,7 @@ export default async (req) => {
             <p style="margin:0 0 18px;font-size:14px;">
               ${terminZeilen}<br/>
               ${kurs.uhrzeit ? `${kurs.uhrzeit}${uhrzeitEnde ? " - " + uhrzeitEnde : ""} Uhr<br/>` : ""}
-              Preis: ${kurs.preis} €<br/>
+              Preis: ${preis} €<br/>
               <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
             </p>
             ${kalenderBlockHtml([kurs.id], true)}
@@ -566,8 +565,8 @@ export default async (req) => {
               zusatz.kombiWunsch
                 ? `<p style="margin:0 0 18px;background:#F6EBE8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, zu einem anderen Kurs bei Wunderwerk Frau angemeldet zu sein, der im gleichen Zeitraum läuft, und diesen Kurs zusätzlich zu buchen. ${
                     kombiCheck?.gefunden
-                      ? `Ich konnte Deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – Dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Du kannst direkt überweisen.`
-                      : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – Dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? kurs.preis} €</strong> statt ${kurs.preis} €. Bitte überweise noch nicht, ich melde mich bei Dir, sobald ich es geprüft habe.`
+                      ? `Ich konnte Deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – Dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? preis} €</strong> statt ${preis} €. Du kannst direkt überweisen.`
+                      : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – Dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? preis} €</strong> statt ${preis} €. Bitte überweise noch nicht, ich melde mich bei Dir, sobald ich es geprüft habe.`
                   }</p>`
                 : ""
             }
@@ -581,17 +580,7 @@ export default async (req) => {
           ${FOOTER_HTML}
         </div>
       </div>`;
-
-    await sendMail({
-      from: FROM,
-      to: buchung.email,
-      subject: `Deine Anmeldung: ${kursBezeichnung}`,
-      html: teilnehmerinHtml,
-    });
-
-    // --- 2. Benachrichtigung an Karo ---
-    const zeile = (label, value) =>
-      value ? `<tr><td style="padding:4px 0;color:#8b93a1;font-size:12px;">${label}</td></tr><tr><td style="padding:0 0 12px 0;color:#111;font-size:14px;">${value}</td></tr>` : "";
+    teilnehmerin = { subject: `Deine Anmeldung: ${kursBezeichnung}`, html };
 
     let notfallHtml = "";
     if (kurs.course_type === "schwangerfit" && (zusatz.notfallName || zusatz.notfallTel)) {
@@ -600,10 +589,6 @@ export default async (req) => {
         zeile("Notfallkontakt Telefon", `<a href="tel:${escapeHtml(zusatz.notfallTel || "")}">${escapeHtml(zusatz.notfallTel || "")}</a>`);
     }
 
-    // Bei einem automatisch gefundenen Namens-Treffer: ruhige Info, keine
-    // Aktion nötig. Kein Treffer: auffällige Warnung - das ist der einzige
-    // Fall, in dem Karo den Namen noch von Hand mit ihren Kurslisten
-    // abgleichen muss.
     const kombiWunschInfoHtml = zusatz.kombiWunsch
       ? kombiCheck?.gefunden
         ? `<div style="margin:16px 20px 0;padding:12px 14px;background:#e6f2e9;border:1px solid #a9d4b5;border-radius:6px;font-size:13px;color:#2f5c3d;">✅ Kombi-Wunsch automatisch bestätigt: Name wurde in einer Buchung${kombiCheck.kursLabel ? ` von <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} gefunden. Preis für den Zusatzkurs (10 € Rabatt bereits eingerechnet): <strong>${kombiPreisGeschaetzt ?? "?"} €</strong>. Keine weitere Prüfung nötig, Teilnehmerin wurde bereits informiert.</div>`
@@ -624,7 +609,8 @@ export default async (req) => {
         <table style="width:100%;padding:0 20px;border-collapse:collapse;">
           ${zeile("Was", `${formatDatumKurz(kurs.start_datum)} ${escapeHtml(kursBezeichnung)}`)}
           ${zeile("Wann", wannText)}
-          ${zeile("Uhrzeit", kurs.uhrzeit ? `${kurs.uhrzeit} - ${uhrzeitEnde} (CEST)` : "")}
+          ${zeile("Uhrzeit", kurs.uhrzeit ? `${kurs.uhrzeit} - ${uhrzeitEnde}` : "")}
+          ${zeile("Preis", `${preis} €`)}
           ${zeile("Mit", "Karoline Hartwig")}
         </table>
         <hr style="border:none;border-top:1px solid #eee;margin:8px 20px;"/>
@@ -637,38 +623,198 @@ export default async (req) => {
         </table>
       </div>`;
 
-    const namePrefixEinzel = kontaktNamePrefix([kurs]);
-    const attachments = [
-      {
-        filename: `${buchung.vorname}-${buchung.nachname}.vcf`,
-        content: base64(
-          vCard({
-            vorname: buchung.vorname,
-            nachname: namePrefixEinzel ? `${namePrefixEinzel} ${buchung.nachname}` : buchung.nachname,
-            telefon: buchung.telefon,
-            email: buchung.email,
-            strasse: buchung.strasse,
-            plz: buchung.plz,
-            ort: buchung.ort,
-            note: kontaktNotizen(zusatz),
-          })
-        ),
-      },
-    ];
-
-    await sendMail({
-      from: FROM,
-      to: ADMIN_EMAIL,
+    const namePrefix = kontaktNamePrefix([kurs]);
+    admin = {
       subject: `${
         zusatz.kombiWunsch ? (kombiCheck?.gefunden ? "✅ Kombi-Wunsch bestätigt: " : "❗ Kombi-Wunsch prüfen: ") : ""
       }${buchung.vorname} ${buchung.nachname} Kurstermin ${kursBezeichnung}`,
       html: adminHtml,
-      attachments,
-    });
+      attachments: [
+        {
+          filename: `${buchung.vorname}-${buchung.nachname}.vcf`,
+          content: base64(
+            vCard({
+              vorname: buchung.vorname,
+              nachname: namePrefix ? `${namePrefix} ${buchung.nachname}` : buchung.nachname,
+              telefon: buchung.telefon,
+              email: buchung.email,
+              strasse: buchung.strasse,
+              plz: buchung.plz,
+              ort: buchung.ort,
+              note: kontaktNotizen(zusatz),
+            })
+          ),
+        },
+      ],
+    };
+  }
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const auftraege = [];
+  if (empfaenger !== "karo") {
+    auftraege.push(
+      sendMail({ to: buchung.email, ...teilnehmerin, idempotencyKey: schluessel ? `${schluessel}-teilnehmerin` : undefined }).then(
+        () => "teilnehmerin"
+      )
+    );
+  }
+  if (empfaenger !== "teilnehmerin") {
+    auftraege.push(
+      sendMail({ to: ADMIN_EMAIL, ...admin, idempotencyKey: schluessel ? `${schluessel}-karo` : undefined }).then(() => "karo")
+    );
+  }
+  const ergebnisse = await Promise.allSettled(auftraege);
+  const gesendet = ergebnisse.filter((e) => e.status === "fulfilled").map((e) => e.value);
+  const fehler = ergebnisse.filter((e) => e.status === "rejected").map((e) => String(e.reason?.message || e.reason));
+  fehler.forEach((f) => console.error("[send-booking-emails] Versand fehlgeschlagen:", f));
+  return { gesendet, fehler };
+}
+
+// Alle Zeilen, die zu derselben Anmeldung gehören wie die angegebene Buchung
+// (Kombikurs über zusatzfelder.kombiGruppe, Paket über paket_id).
+async function ladeAnmeldung(buchungId) {
+  const { data: zeile } = await supabaseAdmin.from("buchungen").select("*").eq("id", buchungId).maybeSingle();
+  if (!zeile) return null;
+  const gruppe = zeile.zusatzfelder?.kombiGruppe;
+  let query = null;
+  if (gruppe) {
+    query = supabaseAdmin.from("buchungen").select("*").eq("zusatzfelder->>kombiGruppe", gruppe);
+  } else if (zeile.paket_id) {
+    query = supabaseAdmin
+      .from("buchungen")
+      .select("*")
+      .eq("paket_id", zeile.paket_id)
+      .eq("email", zeile.email)
+      .eq("created_at", zeile.created_at);
+  }
+  if (!query) return [zeile];
+  const { data: zeilen } = await query.order("created_at", { ascending: true });
+  return zeilen && zeilen.length > 0 ? zeilen.slice(0, 2) : [zeile];
+}
+
+// Wird aufgerufen, wenn Karo im Admin-Bereich einen Kombi-Wunsch nachträglich
+// manuell bestätigt (Button "manuell bestätigen" in CourseCard.jsx).
+async function sendeKombiBestaetigungsMail(buchungId) {
+  const { data: buchung, error: buchungError } = await supabaseAdmin
+    .from("buchungen")
+    .select("*")
+    .eq("id", buchungId)
+    .maybeSingle();
+  if (buchungError || !buchung) return json({ error: "Buchung nicht gefunden" }, 404);
+  if (buchung.kombi_wunsch_bestaetigt !== true) return json({ error: "Kombi-Wunsch ist nicht bestätigt" }, 409);
+
+  const { data: kurs } = await supabaseAdmin.from("kurse").select("*").eq("id", buchung.kurs_id).maybeSingle();
+  const courseTypeLabel = kurs ? COURSE_TYPE_LABELS[kurs.course_type] || kurs.course_type : "";
+  const preis = formatPreis(buchung.zusatzfelder?.kombiPreisGeschaetzt ?? kurs?.preis);
+
+  await sendMail({
+    to: buchung.email.trim(),
+    subject: `Bestätigt: Dein Zusatzkurs${courseTypeLabel ? ` ${courseTypeLabel}` : ""}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px 20px;color:#333;">
+        <p>Liebe ${escapeHtml((buchung.vorname || "").trim())},</p>
+        <p>ich konnte Deinen Kombi-Wunsch jetzt bestätigen! Dein Preis für den Zusatzkurs${courseTypeLabel ? ` (${escapeHtml(courseTypeLabel)})` : ""} ist damit final: <strong>${preis} €</strong>. Du kannst jetzt gerne überweisen.</p>
+        ${SIGNATUR_HTML}
+        <p style="margin:16px 0 0;font-size:12px;color:#8B6464;">Wunderwerk Frau · Bauch · Baby · Beckenboden</p>
+      </div>`,
+    idempotencyKey: `kombi-bestaetigt-${buchung.id}`,
+  });
+
+  return json({ ok: true });
+}
+
+export default async (req) => {
+  if (req.method !== "POST") return new Response("POST erwartet", { status: 405 });
+  if (!RESEND_API_KEY || !supabaseAdmin) {
+    console.error("[send-booking-emails] RESEND_API_KEY oder Supabase-Zugang fehlt");
+    return json({ error: "Mailversand nicht eingerichtet" }, 500);
+  }
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Ungültige Anfrage" }, 400);
+  }
+
+  try {
+    // --- Admin-Aktionen: nur mit gültigem Login von Karo ---
+    if (body?.action === "kombiBestaetigung" || body?.action === "nachsenden") {
+      if (!(await istAdmin(req))) return json({ error: "Nicht erlaubt" }, 403);
+      if (!UUID_RE.test(String(body.buchungId || ""))) return json({ error: "Ungültige Buchung" }, 400);
+
+      if (body.action === "kombiBestaetigung") return await sendeKombiBestaetigungsMail(body.buchungId);
+
+      // Bestätigung nachträglich (erneut) verschicken, z.B. wenn der Versand
+      // beim Buchen gescheitert ist. empfaenger: "beide" (Standard),
+      // "teilnehmerin" oder "karo". preis: optional, nur bei Einzelkursen.
+      const zeilen = await ladeAnmeldung(body.buchungId);
+      if (!zeilen) return json({ error: "Buchung nicht gefunden" }, 404);
+      const empfaenger = ["beide", "teilnehmerin", "karo"].includes(body.empfaenger) ? body.empfaenger : "beide";
+      const daten = await bereiteBuchungAuf(zeilen, { preisVorschlag: body.preis ?? null, preisVertrauen: true });
+      const ergebnis = await sendeBuchungsMails(daten, { empfaenger });
+      if (ergebnis.gesendet.length > 0) {
+        await supabaseAdmin
+          .from("buchungen")
+          .update({ bestaetigung_gesendet_at: new Date().toISOString() })
+          .in("id", zeilen.map((z) => z.id))
+          .is("bestaetigung_gesendet_at", null);
+      }
+      return json({ ok: ergebnis.fehler.length === 0, ...ergebnis }, ergebnis.fehler.length === 0 ? 200 : 502);
+    }
+
+    // --- Öffentlicher Aufruf direkt nach der Buchung (Booking.jsx) ---
+    // Aus dem Browser werden nur E-Mail-Adresse und Kurs-IDs verwendet.
+    const email = typeof body?.buchung?.email === "string" ? body.buchung.email : "";
+    const kursIds = body?.paket ? (body.paket.kurse || []).map((k) => k?.id) : [body?.kurs?.id];
+    if (!email || email.length > 320) return json({ error: "Ungültige Anfrage" }, 400);
+    if (kursIds.length < 1 || kursIds.length > 2 || !kursIds.every((id) => UUID_RE.test(String(id || "")))) {
+      return json({ error: "Ungültige Anfrage" }, 400);
+    }
+
+    const seit = new Date(Date.now() - MAX_ALTER_MINUTEN * 60 * 1000).toISOString();
+    const { data: kandidaten, error: suchFehler } = await supabaseAdmin
+      .from("buchungen")
+      .select("*")
+      .eq("email", email)
+      .in("kurs_id", kursIds)
+      .gte("created_at", seit)
+      .is("bestaetigung_gesendet_at", null)
+      .order("created_at", { ascending: false });
+    if (suchFehler) throw new Error(`Buchung suchen: ${suchFehler.message}`);
+
+    // Je Kurs die neueste passende Zeile; bei zwei Kursen müssen beide aus
+    // EINER Anmeldung stammen (gleicher Zeitstempel, ein gemeinsamer Insert).
+    const zeilen = kursIds.map((id) => (kandidaten || []).find((z) => z.kurs_id === id));
+    if (zeilen.some((z) => !z)) return json({ error: "Keine passende Buchung" }, 404);
+    if (zeilen.length === 2 && zeilen[0].created_at !== zeilen[1].created_at) {
+      return json({ error: "Keine passende Buchung" }, 404);
+    }
+
+    // Buchung als "Bestätigung verschickt" markieren, BEVOR versendet wird -
+    // so kann ein zweiter Aufruf nicht doppelt verschicken.
+    const ids = zeilen.map((z) => z.id);
+    const { data: markiert, error: markierFehler } = await supabaseAdmin
+      .from("buchungen")
+      .update({ bestaetigung_gesendet_at: new Date().toISOString() })
+      .in("id", ids)
+      .is("bestaetigung_gesendet_at", null)
+      .select("id");
+    if (markierFehler) throw new Error(`Buchung markieren: ${markierFehler.message}`);
+    if ((markiert || []).length !== ids.length) return json({ error: "Bereits verschickt" }, 409);
+
+    const preisVorschlag = body?.paket ? null : body?.kurs?.preis ?? null;
+    const daten = await bereiteBuchungAuf(zeilen, { preisVorschlag, preisVertrauen: false });
+    const ergebnis = await sendeBuchungsMails(daten, { empfaenger: "beide", schluessel: `buchung-${ids.join("-")}` });
+
+    // Ging gar nichts raus, Markierung zurücksetzen - dann taucht die Buchung
+    // als "ohne Bestätigung" auf und kann von Karo nachgesendet werden.
+    if (ergebnis.gesendet.length === 0) {
+      await supabaseAdmin.from("buchungen").update({ bestaetigung_gesendet_at: null }).in("id", ids);
+    }
+    return json({ ok: ergebnis.fehler.length === 0 }, ergebnis.fehler.length === 0 ? 200 : 502);
   } catch (e) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { "Content-Type": "application/json" } });
+    console.error("[send-booking-emails] Fehler:", e);
+    return json({ error: "Interner Fehler" }, 500);
   }
 };
 
