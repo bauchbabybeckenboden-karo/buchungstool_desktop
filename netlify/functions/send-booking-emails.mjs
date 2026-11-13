@@ -53,20 +53,60 @@ const FRAGEBOGEN_URL = "https://bauch-baby-beckenboden-weiterleitung.netlify.app
 // Karos Visitenkarte (Kontakt speichern, damit Mails nicht im Spam landen)
 const VISITENKARTE_URL = "https://bauch-baby-beckenboden.de/wp-content/uploads/2026/11/karo_4.vcf";
 
-// Gemeinsame Bausteine für alle Mails an Teilnehmerinnen (Wunderwerk Frau)
-const VISITENKARTE_HTML = `
-              <p style="margin:0 0 12px;font-size:14px;">PS: Speichere Dir bitte meine Visitenkarte, um sicherzustellen, dass nichts im Spam landet.</p>
-              <p style="margin:0 0 24px;"><a href="${VISITENKARTE_URL}" style="display:inline-block;background:#8B6464;color:#F3E9E5;text-decoration:none;padding:10px 22px;border-radius:22px;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Kontakt speichern</a></p>`;
+// ---------------------------------------------------------------------------
+// Layout "Wunderwerk Frau" für alle Mails an Teilnehmerinnen (Stand 13.11.2026)
+// Tabellen + feste Hintergrundfarben (bgcolor), damit Gmail & Co. nichts
+// wegfiltern. Header Mauve mit Creme-Logo, Textbereich Creme, Infos in rosa
+// Kästen mit Mauve-Balken, Footer Mauve.
+// ---------------------------------------------------------------------------
+const LOGO_URL = "https://raw.githubusercontent.com/bauchbabybeckenboden-karo/Logos/main/Clitlogo-creme.png";
+const KURSORT = "Heinrich-Bertelmann-Str. 12, Kassel";
 
-const SIGNATUR_HTML = `<p style="margin:0;">Ich freue mich doll!<br/>Deine Karo <span style="color:#C0392B;">&#9830;</span></p>`;
+// Rosa Kasten mit Mauve-Balken links
+function infoBox(inhalt) {
+  return `
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;"><tr><td bgcolor="#E8D5D0" style="background-color:#E8D5D0;border-left:4px solid #8B6464;padding:18px 24px;font-size:14px;line-height:1.7;color:#3D2B2B;">${inhalt}</td></tr></table>`;
+}
 
-const FOOTER_HTML = `
-            <div style="background:#8B6464;padding:22px 36px;color:#F3E9E5;text-align:center;line-height:1.6;">
-              <div style="font-family:Georgia,serif;font-size:20px;letter-spacing:1px;">Wunderwerk Frau</div>
-              <div style="width:140px;height:1px;background:#F3E9E5;margin:6px auto;"></div>
-              <div style="font-size:11px;letter-spacing:3px;margin-bottom:10px;">BAUCH · BABY · BECKENBODEN</div>
-              <a href="https://bauch-baby-beckenboden.de" style="color:#F3E9E5;font-size:12px;">bauch-baby-beckenboden.de</a>
-            </div>`;
+function absatz(text, extraStyle = "") {
+  return `<p style="margin:0 0 16px;${extraStyle}">${text}</p>`;
+}
+
+// Runder Button "Kontakt speichern" (Visitenkarte)
+const VISITENKARTE_BUTTON = `
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 26px;"><tr><td bgcolor="#8B6464" style="background-color:#8B6464;border-radius:22px;padding:10px 22px;"><a href="${VISITENKARTE_URL}" style="color:#F3E9E5;text-decoration:none;font-size:13px;letter-spacing:1px;text-transform:uppercase;">Kontakt speichern</a></td></tr></table>`;
+
+// Signatur: Abschlusszeile + "Deine Karo" mit rotem Karo
+function signaturHtml(abschluss = "Ich freue mich doll!") {
+  return `<p style="margin:0 0 4px;">${abschluss}</p>
+<p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:24px;color:#8B6464;">Deine Karo <span style="color:#C0392B;font-style:normal;">&#9830;</span></p>`;
+}
+
+// Kompletter Rahmen: Header (Logo, kleine Zeile, Titel), Anrede, Inhalt, Footer
+function mailLayout({ kleineZeile, titel, vorname, inhalt }) {
+  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff"><tr><td align="center" style="padding:16px 8px;">
+<table width="560" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;width:100%;font-family:Arial,Helvetica,sans-serif;">
+<tr><td bgcolor="#8B6464" align="center" style="background-color:#8B6464;padding:28px 24px;">
+<table cellpadding="0" cellspacing="0" border="0"><tr>
+<td valign="middle" style="padding-right:18px;"><img src="${LOGO_URL}" width="44" height="87" alt="Wunderwerk Frau" style="display:block;border:0;"></td>
+<td valign="middle" style="color:#F3E9E5;">
+<p style="margin:0 0 4px;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#F3E9E5;">${escapeHtml(kleineZeile)}</p>
+<p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:28px;color:#F3E9E5;">${escapeHtml(titel)}</p>
+</td></tr></table>
+</td></tr>
+<tr><td bgcolor="#F3E9E5" style="background-color:#F3E9E5;padding:36px 36px 30px;color:#3D2B2B;font-size:15px;line-height:1.7;">
+<p style="margin:0 0 20px;font-family:Georgia,'Times New Roman',serif;font-size:26px;color:#3D2B2B;">Liebe ${escapeHtml(vorname)}, &#10024;</p>
+${inhalt}
+</td></tr>
+<tr><td bgcolor="#8B6464" align="center" style="background-color:#8B6464;padding:24px;color:#F3E9E5;">
+<p style="margin:0 0 4px;font-family:Georgia,'Times New Roman',serif;font-size:19px;color:#F3E9E5;">Wunderwerk Frau</p>
+<p style="margin:0 0 6px;font-size:11px;letter-spacing:3px;color:#F3E9E5;">BAUCH · BABY · BECKENBODEN</p>
+<p style="margin:0 0 4px;font-size:12px;color:#F3E9E5;">Karoline Hartwig · Heinrich-Bertelmann-Str. 12 · Kassel</p>
+<a href="https://bauch-baby-beckenboden.de" style="font-size:12px;color:#F3E9E5;">bauch-baby-beckenboden.de</a>
+</td></tr>
+</table>
+</td></tr></table>`;
+}
 
 // Abo-Link für die Kurstermine der Teilnehmerin (Funktion kalender-feed):
 // aktualisiert sich im Kalender automatisch, auch bei Ausfällen/Verschiebungen.
@@ -76,12 +116,113 @@ function kalenderBlockHtml(kursIds, nurEinzeln = false) {
   if (ids.length === 0) return "";
   const url = `${SITE_URL}/.netlify/functions/kalender-feed?${ids.map((id) => `kurs=${id}`).join("&")}${nurEinzeln ? "&nur=1" : ""}`;
   const webcal = url.replace(/^https?:/, "webcal:");
-  return `
-            <p style="margin:0 0 18px;font-size:14px;">
-              📅 <strong>Deine Termine im Kalender:</strong>
-              <a href="${webcal}" style="color:#8b6464;">Kurstermine abonnieren</a> (iPhone, Apple Kalender, Outlook). Die Termine aktualisieren sich automatisch, falls sich etwas ändert.<br/>
-              <span style="font-size:12px;color:#8B6464;">Google Kalender: Link kopieren und unter „Weitere Kalender“ – „Per URL“ einfügen:<br/>${url}</span>
-            </p>`;
+  const google = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`;
+  const knopf = (href, text) =>
+    `<td bgcolor="#8B6464" style="background-color:#8B6464;border-radius:22px;padding:9px 18px;"><a href="${href}" style="color:#F3E9E5;text-decoration:none;font-size:13px;letter-spacing:.5px;">${text}</a></td>`;
+  return `<p style="margin:0 0 10px;font-size:14px;">&#128467;&#65039; Kurstermine in Deinen Kalender übernehmen – sie aktualisieren sich automatisch:</p>
+<table cellpadding="0" cellspacing="0" border="0" style="margin:0 0 22px;"><tr>${knopf(webcal, "Apple / Outlook")}<td style="width:10px;font-size:0;">&nbsp;</td>${knopf(google, "Google Kalender")}</tr></table>`;
+}
+
+// Texte, die von Neuanmeldung / Wiederkehrerin abhängen
+const WHATSAPP_LINK = `<a href="mailto:${"kontakt@wunderwerk-frau.de"}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8B6464;">ich nutze kein WhatsApp</a>`;
+const FRAGEN_HINWEIS =
+  "Solltest Du Fragen haben, werden diese wahrscheinlich in den E-Mails, die Du vor dem Kursstart noch erhältst, beantwortet! Aus dem Grund ist es super, wenn Du Dir meine Visitenkarte speicherst, sodass nichts im Spam hängen bleibt.";
+
+function bankBox(preisText, verwendungszweck) {
+  return infoBox(`<strong>Kursgebühr:</strong> ${preisText} €<br/>
+<strong>Kontoinhaber:</strong> ${BANK.kontoinhaber}<br/>
+<strong>IBAN:</strong> ${BANK.iban}<br/>
+<strong>BIC:</strong> ${BANK.bic}<br/>
+<strong>Verwendungszweck:</strong> ${escapeHtml(verwendungszweck)}`);
+}
+
+// Ein Kurs im Termin-Kasten: Name, Wochentag/Uhrzeit, Daten, Ort
+function terminBlock(k, mitLabel) {
+  const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
+  const ende = addMinutes(k.uhrzeit, k.dauer_min);
+  const daten =
+    Array.isArray(k.termin_daten) && k.termin_daten.length > 0
+      ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
+      : [formatDatumKurz(k.start_datum), k.end_datum ? `bis ${formatDatumKurz(k.end_datum)}` : ""].filter(Boolean).join(" ");
+  const zeit = k.uhrzeit ? `${k.uhrzeit}${ende ? " – " + ende : ""} Uhr` : "";
+  return `${mitLabel ? `<strong>${escapeHtml(label)}</strong>${zeit ? ` (${zeit})` : ""}<br/>` : zeit ? `<strong>${zeit}</strong><br/>` : ""}${daten}<br/><strong>Wo:</strong> ${k.ist_online ? "Online" : KURSORT}`;
+}
+
+// Baut die Teilnehmerinnen-Mail (Einzelkurs, Kombikurs oder Paket)
+// wiederkehrerin: true = hat diese Kursart(en) schon einmal gebucht
+function teilnehmerinHtmlBauen({ vorname, kursText, preisText, verwendungszweck, kurse, kalenderHtml, wiederkehrerin, zusatzHtml = "", mehrereKurse = false }) {
+  const schwangerfitDabei = kurse.some((k) => k.course_type === "schwangerfit");
+  const termine = infoBox(kurse.map((k) => terminBlock(k, mehrereKurse)).join("<br/><br/>"));
+  let inhalt;
+  if (wiederkehrerin) {
+    inhalt =
+      absatz(`mega, dass Du wieder dabei bist! Vielen Dank für Deine Anmeldung zu <strong>${escapeHtml(kursText)}</strong>.`) +
+      bankBox(preisText, verwendungszweck) +
+      absatz(
+        `&#8252;&#65039; Hat sich bei Dir gesundheitlich etwas verändert? Dann gib mir bitte vor Kursstart kurz Bescheid.${
+          schwangerfitDabei
+            ? ""
+            : " Bitte beachte, dass Du mich bei erneuter Schwangerschaft unbedingt informieren musst (ggf. dann Wechsel zu Schwangerfit, das klären wir aber dann in Ruhe)."
+        }`
+      ) +
+      absatz("Bleib nach dem Ende des Kurses einfach in unserer WhatsApp-Gruppe.", "margin-bottom:22px;") +
+      zusatzHtml +
+      termine +
+      kalenderHtml +
+      signaturHtml("Ich freue mich voll, Dich wiederzusehen!");
+  } else {
+    inhalt =
+      absatz(`vielen Dank für Deine Anmeldung zu <strong>${escapeHtml(kursText)}</strong>! Ich freue mich mega, Dich kennenzulernen.`) +
+      bankBox(preisText, verwendungszweck) +
+      absatz(
+        `Nach der Überweisung fülle unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8B6464;">diesen Fragebogen</a> aus – so kann ich mich gut auf Dich einstellen.${mehrereKurse ? " Einmal reicht für beide Kurse." : ""}`
+      ) +
+      absatz(`&#8252;&#65039; Ca. 10 Tage vor Kursstart erhältst Du die Einladung zur WhatsApp-Gruppe (${WHATSAPP_LINK}).`, "margin-bottom:22px;") +
+      zusatzHtml +
+      termine +
+      kalenderHtml +
+      absatz(FRAGEN_HINWEIS) +
+      VISITENKARTE_BUTTON +
+      signaturHtml();
+  }
+  return mailLayout({
+    kleineZeile: "Deine Anmeldung im Überblick",
+    titel: wiederkehrerin ? "Yeah!" : "Willkommen!",
+    vorname,
+    inhalt,
+  });
+}
+
+// Wiederkehrerin = es gibt eine ÄLTERE Buchung (gleiche E-Mail oder gleicher
+// Vor- + Nachname) in JEDER der jetzt gebuchten Kursarten. Bei einem Kombikurs
+// mit einer neuen Kursart gilt sie also als Neuanmeldung (Fragebogen nötig).
+async function istWiederkehrerin(buchung, kurse, vorDatum, ausserIds) {
+  const typen = [...new Set(kurse.map((k) => k.course_type))];
+  const { data: kurseAlle } = await supabaseAdmin.from("kurse").select("id,course_type").in("course_type", typen);
+  const typVon = Object.fromEntries((kurseAlle || []).map((k) => [k.id, k.course_type]));
+  const kursIds = Object.keys(typVon);
+  if (kursIds.length === 0) return false;
+  const email = (buchung.email || "").trim();
+  const vn = (buchung.vorname || "").trim();
+  const nn = (buchung.nachname || "").trim();
+  const abfragen = [];
+  if (email) {
+    abfragen.push(
+      supabaseAdmin.from("buchungen").select("id,kurs_id").ilike("email", email).in("kurs_id", kursIds).lt("created_at", vorDatum).limit(50)
+    );
+  }
+  if (vn && nn) {
+    abfragen.push(
+      supabaseAdmin.from("buchungen").select("id,kurs_id").ilike("vorname", vn).ilike("nachname", nn).in("kurs_id", kursIds).lt("created_at", vorDatum).limit(50)
+    );
+  }
+  const gefunden = new Set();
+  for (const ergebnis of await Promise.all(abfragen)) {
+    (ergebnis.data || []).forEach((z) => {
+      if (!ausserIds.includes(z.id)) gefunden.add(typVon[z.kurs_id]);
+    });
+  }
+  return typen.every((t) => gefunden.has(t));
 }
 
 const COURSE_TYPE_LABELS = {
@@ -300,6 +441,7 @@ async function bereiteBuchungAuf(zeilen, { preisVorschlag = null, preisVertrauen
     ort: (erste.ort || "").trim(),
     zusatzfelder: erste.zusatzfelder || {},
   };
+  const meta = { erstelltAm: erste.created_at, zeilenIds: zeilen.map((z) => z.id) };
   const gutschein = erste.hat_gutschein
     ? { betrag: erste.gutschein_betrag, fotoUrl: erste.gutschein_foto_url || null }
     : null;
@@ -312,12 +454,13 @@ async function bereiteBuchungAuf(zeilen, { preisVorschlag = null, preisVertrauen
       kurse = [nachId[paketRow.kurs_id_1], nachId[paketRow.kurs_id_2]].filter(Boolean);
       if (kurse.length !== 2) throw new Error("Kurse des Pakets passen nicht zur Buchung");
       const preis = reduzierterPreis(paketRow.preis, kurse[0], kurse[1]);
-      return { art: "paket", buchung, gutschein, kurse, paket: { name: paketRow.name, bezeichnung: "Kurs-Paket", preis } };
+      return { art: "paket", ...meta, buchung, gutschein, kurse, paket: { name: paketRow.name, bezeichnung: "Kurs-Paket", preis } };
     }
     kurse = [...kurse].sort((a, b) => (a.start_datum || "").localeCompare(b.start_datum || ""));
     const preis = reduzierterPreis(kombiPreis(kurse[0], kurse[1]), kurse[0], kurse[1]);
     return {
       art: "paket",
+      ...meta,
       buchung,
       gutschein,
       kurse,
@@ -333,7 +476,7 @@ async function bereiteBuchungAuf(zeilen, { preisVorschlag = null, preisVertrauen
   if (vorschlag != null && Number.isFinite(vorschlag) && vorschlag >= 0) {
     if (preisVertrauen || vorschlag === normal || vorschlag === solo) preis = vorschlag;
   }
-  return { art: "einzel", buchung, gutschein, kurse, kurs: { ...kurs, preis }, buchungId: erste.id };
+  return { art: "einzel", ...meta, buchung, gutschein, kurse, kurs: { ...kurs, preis }, buchungId: erste.id };
 }
 
 // Baut und verschickt beide Mails. empfaenger: "beide" | "teilnehmerin" | "karo".
@@ -343,6 +486,8 @@ async function sendeBuchungsMails(daten, { empfaenger = "beide", schluessel }) {
   const { buchung, gutschein } = daten;
   const zusatz = buchung.zusatzfelder || {};
   const adresse = `${buchung.strasse}, ${buchung.plz} ${buchung.ort}`;
+  const wiederkehrerin = await istWiederkehrerin(buchung, daten.kurse, daten.erstelltAm, daten.zeilenIds).catch(() => false);
+  const wiederkehrerinPrefix = wiederkehrerin ? "Wiederkehrerin: " : "";
 
   const zeile = (label, value) =>
     value
@@ -363,64 +508,16 @@ async function sendeBuchungsMails(daten, { empfaenger = "beide", schluessel }) {
     const preis = formatPreis(daten.paket.preis);
     const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${name}`;
 
-    const kursBlockHtml = (k) => {
-      const label = COURSE_TYPE_LABELS[k.course_type] || k.course_type;
-      const uhrzeitEndeK = addMinutes(k.uhrzeit, k.dauer_min);
-      const terminZeilenK =
-        Array.isArray(k.termin_daten) && k.termin_daten.length > 0
-          ? k.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
-          : [formatDatumKurz(k.start_datum), k.end_datum ? `bis ${formatDatumKurz(k.end_datum)}` : ""]
-              .filter(Boolean)
-              .join(" ");
-      return `
-          <p style="margin:0 0 4px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">${escapeHtml(label)}</p>
-          <p style="margin:0 0 18px;font-size:14px;">
-            ${terminZeilenK}<br/>
-            ${k.uhrzeit ? `${k.uhrzeit}${uhrzeitEndeK ? " - " + uhrzeitEndeK : ""} Uhr<br/>` : ""}
-          </p>`;
-    };
-
-    const html = `
-        <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#F6EBE8;padding:32px 12px;">
-          <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #F6EBE8;">
-            <div style="background:linear-gradient(135deg,#8b6464,#8B6464);padding:32px 36px;color:#F6EBE8;">
-              <p style="margin:0 0 6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#e3cfcf;">Deine Anmeldung im Überblick</p>
-              <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
-            </div>
-            <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
-              <p style="margin:0 0 18px;">vielen Dank für Deine Anmeldung zum ${escapeHtml(bezeichnung)} <strong style="font-weight:600;">${escapeHtml(name)}</strong>!</p>
-
-              <hr style="border:none;border-top:1px solid #F6EBE8;margin:24px 0;"/>
-
-              <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Wie es weitergeht</p>
-              <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${preis} €</strong> auf folgendes Konto:</p>
-              <table style="width:100%;font-size:13px;margin:0 0 18px;border-collapse:collapse;">
-                <tr><td style="padding:2px 0;color:#8B6464;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
-                <tr><td style="padding:2px 0;color:#8B6464;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
-                <tr><td style="padding:2px 0;color:#8B6464;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
-                <tr><td style="padding:2px 0;color:#8B6464;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
-              </table>
-              <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus (einmal reicht für beide Kurse).</p>
-
-              <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst Du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${KONTAKT_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst Du wöchentlich daran erinnert, Dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
-
-              <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Deine Kurstermine</p>
-              ${kurse.map(kursBlockHtml).join("")}
-              ${kalenderBlockHtml(kurse.map((k) => k.id))}
-              <p style="margin:0 0 18px;font-size:14px;">
-                Gesamtpreis: ${preis} €<br/>
-                <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
-              </p>
-
-              <p style="margin:0 0 24px;">💕 Solltest Du Fragen haben, melde Dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für Dein Vertrauen 💕</p>
-
-              ${SIGNATUR_HTML}
-              <div style="height:24px;"></div>
-              ${VISITENKARTE_HTML}
-            </div>
-            ${FOOTER_HTML}
-          </div>
-        </div>`;
+    const html = teilnehmerinHtmlBauen({
+      vorname: buchung.vorname,
+      kursText: `${bezeichnung} ${name}`,
+      preisText: preis,
+      verwendungszweck,
+      kurse,
+      kalenderHtml: kalenderBlockHtml(kurse.map((k) => k.id)),
+      wiederkehrerin,
+      mehrereKurse: true,
+    });
     teilnehmerin = { subject: `Deine Anmeldung: ${name}`, html };
 
     let notfallHtml = "";
@@ -469,7 +566,7 @@ async function sendeBuchungsMails(daten, { empfaenger = "beide", schluessel }) {
 
     const namePrefix = kontaktNamePrefix(kurse);
     admin = {
-      subject: `${buchung.vorname} ${buchung.nachname} ${bezeichnung} ${name}`,
+      subject: `${wiederkehrerinPrefix}${buchung.vorname} ${buchung.nachname} ${bezeichnung} ${name}`,
       html: adminHtml,
       attachments: [
         {
@@ -520,66 +617,26 @@ async function sendeBuchungsMails(daten, { empfaenger = "beide", schluessel }) {
         ? kurs.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
         : `${formatDatumKurz(kurs.start_datum)}<br/>Jeder Woche am ${wochentagLang} für ${kurs.termine} Mal`;
 
-    const terminZeilen =
-      Array.isArray(kurs.termin_daten) && kurs.termin_daten.length > 0
-        ? kurs.termin_daten.map((d) => formatDatumKurz(d)).join("<br/>")
-        : [formatDatumKurz(kurs.start_datum), kurs.end_datum ? `bis ${formatDatumKurz(kurs.end_datum)}` : ""]
-            .filter(Boolean)
-            .join(" ");
     const verwendungszweck = `${buchung.vorname} ${buchung.nachname} – ${kursBezeichnung}`;
-
-    const html = `
-      <div style="font-family:'Helvetica Neue',Arial,sans-serif;background:#F6EBE8;padding:32px 12px;">
-        <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #F6EBE8;">
-          <div style="background:linear-gradient(135deg,#8b6464,#8B6464);padding:32px 36px;color:#F6EBE8;">
-            <p style="margin:0 0 6px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#e3cfcf;">Deine Anmeldung im Überblick</p>
-            <h1 style="margin:0;font-size:22px;font-weight:300;letter-spacing:.5px;">🌿 Liebe ${escapeHtml(buchung.vorname)},</h1>
-          </div>
-          <div style="padding:32px 36px;color:#3d2b2b;font-size:15px;line-height:1.8;font-weight:300;">
-            <p style="margin:0 0 18px;">vielen Dank für Deine Anmeldung zu <strong style="font-weight:600;">${escapeHtml(courseTypeLabel)}</strong>!</p>
-
-            <hr style="border:none;border-top:1px solid #F6EBE8;margin:24px 0;"/>
-
-            <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Wie es weitergeht</p>
-            <p style="margin:0 0 14px;">Nachdem Du die Kursgebühr von <strong>${preis} €</strong> auf folgendes Konto:</p>
-            <table style="width:100%;font-size:13px;margin:0 0 18px;border-collapse:collapse;">
-              <tr><td style="padding:2px 0;color:#8B6464;">Kontoinhaber</td><td style="padding:2px 0;text-align:right;">${BANK.kontoinhaber}</td></tr>
-              <tr><td style="padding:2px 0;color:#8B6464;">IBAN</td><td style="padding:2px 0;text-align:right;">${BANK.iban}</td></tr>
-              <tr><td style="padding:2px 0;color:#8B6464;">BIC</td><td style="padding:2px 0;text-align:right;">${BANK.bic}</td></tr>
-              <tr><td style="padding:2px 0;color:#8B6464;">Verwendungszweck</td><td style="padding:2px 0;text-align:right;">${escapeHtml(verwendungszweck)}</td></tr>
-            </table>
-            <p style="margin:0 0 18px;">überwiesen hast, fülle bitte unbedingt <a href="${FRAGEBOGEN_URL}" style="color:#8b6464;">diesen Fragebogen</a> aus.</p>
-
-            <p style="margin:0 0 18px;">Ca. 10 Tage vor Kursstart erhältst Du die Einladung zur WhatsApp-Gruppe (<a href="mailto:${KONTAKT_EMAIL}?subject=${encodeURIComponent("Ich nutze kein WhatsApp")}" style="color:#8b6464;">ich nutze kein WhatsApp</a>). Außerdem wirst Du wöchentlich daran erinnert, Dich in unser Teilnahmeformular einzutragen – das hilft, den Raum optimal vorzubereiten.</p>
-
-            <p style="margin:0 0 6px;font-size:12px;color:#8b6464;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Deine Kurstermine</p>
-            <p style="margin:0 0 18px;font-size:14px;">
-              ${terminZeilen}<br/>
-              ${kurs.uhrzeit ? `${kurs.uhrzeit}${uhrzeitEnde ? " - " + uhrzeitEnde : ""} Uhr<br/>` : ""}
-              Preis: ${preis} €<br/>
-              <span style="font-size:12px;color:#8B6464;">Bitte beachte, dass es aufgrund von Krankheit o. Ä. zu Terminverschiebungen kommen kann.</span>
-            </p>
-            ${kalenderBlockHtml([kurs.id], true)}
-
-            ${
-              zusatz.kombiWunsch
-                ? `<p style="margin:0 0 18px;background:#F6EBE8;border-radius:8px;padding:12px 16px;font-size:14px;">Du hast angegeben, zu einem anderen Kurs bei Wunderwerk Frau angemeldet zu sein, der im gleichen Zeitraum läuft, und diesen Kurs zusätzlich zu buchen. ${
-                    kombiCheck?.gefunden
-                      ? `Ich konnte Deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – Dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? preis} €</strong> statt ${preis} €. Du kannst direkt überweisen.`
-                      : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – Dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? preis} €</strong> statt ${preis} €. Bitte überweise noch nicht, ich melde mich bei Dir, sobald ich es geprüft habe.`
-                  }</p>`
-                : ""
-            }
-
-            <p style="margin:0 0 24px;">💕 Solltest Du Fragen haben, melde Dich gern – die FAQ auf der Homepage beantwortet ggf. ebenfalls die ein- oder andere Frage! Vielen Dank für Dein Vertrauen 💕</p>
-
-            ${SIGNATUR_HTML}
-            <div style="height:24px;"></div>
-            ${VISITENKARTE_HTML}
-          </div>
-          ${FOOTER_HTML}
-        </div>
-      </div>`;
+    const kombiWunschHtml = zusatz.kombiWunsch
+      ? infoBox(
+          `Du hast angegeben, zu einem anderen Kurs bei Wunderwerk Frau angemeldet zu sein, der im gleichen Zeitraum läuft, und diesen Kurs zusätzlich zu buchen. ${
+            kombiCheck?.gefunden
+              ? `Ich konnte Deine Anmeldung${kombiCheck.kursLabel ? ` bei <strong>${escapeHtml(kombiCheck.kursLabel)}</strong>` : ""} bestätigen – Dein Preis für diesen Zusatzkurs ist damit final: <strong>${kombiPreisGeschaetzt ?? preis} €</strong> statt ${preis} €. Du kannst direkt überweisen.`
+              : `Ich konnte das noch nicht automatisch bestätigen und prüfe das von Hand – Dein voraussichtlicher Preis liegt bei <strong>${kombiPreisGeschaetzt ?? preis} €</strong> statt ${preis} €. Bitte überweise noch nicht, ich melde mich bei Dir, sobald ich es geprüft habe.`
+          }`
+        )
+      : "";
+    const html = teilnehmerinHtmlBauen({
+      vorname: buchung.vorname,
+      kursText: courseTypeLabel,
+      preisText: preis,
+      verwendungszweck,
+      kurse: [kurs],
+      kalenderHtml: kalenderBlockHtml([kurs.id], true),
+      wiederkehrerin,
+      zusatzHtml: kombiWunschHtml,
+    });
     teilnehmerin = { subject: `Deine Anmeldung: ${kursBezeichnung}`, html };
 
     let notfallHtml = "";
@@ -627,7 +684,7 @@ async function sendeBuchungsMails(daten, { empfaenger = "beide", schluessel }) {
     admin = {
       subject: `${
         zusatz.kombiWunsch ? (kombiCheck?.gefunden ? "✅ Kombi-Wunsch bestätigt: " : "❗ Kombi-Wunsch prüfen: ") : ""
-      }${buchung.vorname} ${buchung.nachname} Kurstermin ${kursBezeichnung}`,
+      }${wiederkehrerinPrefix}${buchung.vorname} ${buchung.nachname} Kurstermin ${kursBezeichnung}`,
       html: adminHtml,
       attachments: [
         {
@@ -709,13 +766,16 @@ async function sendeKombiBestaetigungsMail(buchungId) {
   await sendMail({
     to: buchung.email.trim(),
     subject: `Bestätigt: Dein Zusatzkurs${courseTypeLabel ? ` ${courseTypeLabel}` : ""}`,
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px 20px;color:#333;">
-        <p>Liebe ${escapeHtml((buchung.vorname || "").trim())},</p>
-        <p>ich konnte Deinen Kombi-Wunsch jetzt bestätigen! Dein Preis für den Zusatzkurs${courseTypeLabel ? ` (${escapeHtml(courseTypeLabel)})` : ""} ist damit final: <strong>${preis} €</strong>. Du kannst jetzt gerne überweisen.</p>
-        ${SIGNATUR_HTML}
-        <p style="margin:16px 0 0;font-size:12px;color:#8B6464;">Wunderwerk Frau · Bauch · Baby · Beckenboden</p>
-      </div>`,
+    html: mailLayout({
+      kleineZeile: "Dein Kombi-Wunsch",
+      titel: "Bestätigt!",
+      vorname: (buchung.vorname || "").trim(),
+      inhalt:
+        absatz(
+          `ich konnte Deinen Kombi-Wunsch jetzt bestätigen! Dein Preis für den Zusatzkurs${courseTypeLabel ? ` (${escapeHtml(courseTypeLabel)})` : ""} ist damit final: <strong>${preis} €</strong>. Du kannst jetzt gerne überweisen.`,
+          "margin-bottom:26px;"
+        ) + signaturHtml(),
+    }),
     idempotencyKey: `kombi-bestaetigt-${buchung.id}`,
   });
 
