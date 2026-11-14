@@ -114,26 +114,26 @@ export function vergangeneTermine(course) {
   return course.termin_daten.filter((d) => d < heute).length
 }
 
-// Reduziert einen Kurs- oder Paketpreis anteilig um die bereits
-// stattgefundenen Termine - pauschal 16€ pro Termin (NICHT die Terminrate der
-// Kursart, die für den Grundpreis gilt - bei Schwangerfit z.B. bewusst
-// abweichend). Manche Kurse weichen von den 16€ ab (z.B. Soyo Donnerstags:
-// nur 15€), das ist pro Kurs über kurse.reduzierung_pro_termin einstellbar
-// (Default 16, siehe Admin-Bereich). So zahlen späte Anmeldungen nur für die
-// Termine, die noch stattfinden. Ein Kombi-Paket übergibt hier beide
-// zugrundeliegenden Kurse, ein Einzelkurs nur sich selbst.
-const STANDARD_REDUZIERUNG_CENTS = 1600
+// Quereinstieg (Stand 14.11.2026, Vorgabe Karo): Hat ein Kurs schon begonnen
+// (mind. ein Termin vorbei), kostet jede noch offene Stunde pauschal 17 € -
+// wie eine Schnupperstunde. Teilbuchungen sollen bewusst nicht günstiger sein
+// als der ganze Kurs. Bei Kombikurs/Paket zählen die offenen Stunden beider
+// Kurse. Nie teurer als der normale Preis. Solange noch kein Termin vorbei
+// ist, gilt der normale Preis.
+// (Die Spalte kurse.reduzierung_pro_termin wird dafür nicht mehr verwendet.)
+export const QUEREINSTIEG_PREIS_PRO_STUNDE = 17
+
+export function offeneTermine(course) {
+  if (!course || !Array.isArray(course.termin_daten) || course.termin_daten.length === 0) return 0
+  return Math.max(0, course.termin_daten.length - vergangeneTermine(course))
+}
+
+export function istQuereinstieg(...courses) {
+  return courses.some((course) => course && vergangeneTermine(course) > 0)
+}
 
 export function reduzierterPreis(basisPreis, ...courses) {
-  const abzugCents = courses.reduce((summe, course) => {
-    if (!course) return summe
-    const rateCents =
-      course.reduzierung_pro_termin != null
-        ? Math.round(Number(course.reduzierung_pro_termin) * 100)
-        : STANDARD_REDUZIERUNG_CENTS
-    return summe + rateCents * vergangeneTermine(course)
-  }, 0)
-  if (abzugCents === 0) return Number(basisPreis)
-  const preisCents = Math.round(Number(basisPreis) * 100) - abzugCents
-  return Math.max(0, preisCents) / 100
+  if (!istQuereinstieg(...courses)) return Number(basisPreis)
+  const offen = courses.reduce((summe, course) => summe + offeneTermine(course), 0)
+  return Math.min(Number(basisPreis), offen * QUEREINSTIEG_PREIS_PRO_STUNDE)
 }

@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import styles from './Booking.module.css'
 import { getCourseTypeBySlug } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
-import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine, einzelPreis, kombiPreis } from '../pricing.js'
+import { reduzierterPreis, effektiverGrundpreis, vergangeneTermine, einzelPreis, kombiPreis, istQuereinstieg, offeneTermine, QUEREINSTIEG_PREIS_PRO_STUNDE } from '../pricing.js'
 
 function formatDatumDE(isoDatum) {
   if (!isoDatum) return ''
@@ -40,6 +40,29 @@ function formatTerminlisteKurz(dates) {
   const vorherige = dates.slice(0, -1).map(formatDatumKurz).join(', ')
   const letzter = formatDatumDE(dates[dates.length - 1])
   return `${vorherige} & ${letzter}`
+}
+
+// Hinweis beim Quereinstieg: 17 € pro noch offener Stunde (siehe pricing.js)
+function quereinstiegHinweis(...courses) {
+  if (!istQuereinstieg(...courses)) return ''
+  const offen = courses.reduce((summe, c) => summe + offeneTermine(c), 0)
+  return ` – Quereinstieg: ${offen} ${offen === 1 ? 'verbleibende Stunde' : 'verbleibende Stunden'} à ${QUEREINSTIEG_PREIS_PRO_STUNDE} €`
+}
+
+// Heutiges Datum (Europe/Berlin) als "YYYY-MM-DD"
+function heuteBerlinISO() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(new Date())
+}
+
+// Ein Kurs ist beendet, wenn sein letzter Termin vor heute liegt - dann wird er
+// auf der Buchungsseite nicht mehr angeboten (sonst stünde dort z.B. ein
+// Restpreis von 2 € für einen Kurs, der schon vorbei ist).
+function kursBeendet(course) {
+  if (!course) return true
+  const daten = Array.isArray(course.termin_daten) && course.termin_daten.length > 0 ? [...course.termin_daten].sort() : []
+  const letzter = daten.length > 0 ? daten[daten.length - 1] : course.end_datum || course.start_datum
+  if (!letzter) return false
+  return letzter < heuteBerlinISO()
 }
 
 function terminDatenOderRange(course) {
@@ -128,7 +151,6 @@ function TerminBox({ course, partner, solo, label, comboLabel, spotsLeft, select
   const grundpreis = solo ? einzelPreis(course) : partner ? kombiPreis(course, partner) : effektiverGrundpreis(course)
   const effektivPreis = reduzierterPreis(grundpreis, course, partner)
   const rabattiert = !solo && !partner && grundpreis < Number(course.preis)
-  const spaeterReduziert = effektivPreis < grundpreis
 
   const klassen = [styles.termineBox]
   if (istWarnung) klassen.push(styles.termineBoxHighlight)
@@ -158,7 +180,7 @@ function TerminBox({ course, partner, solo, label, comboLabel, spotsLeft, select
               {effektivPreis}€
               {rabattiert && ` statt ${course.preis}€`}
               {rabattiert && course.rabatt_hinweis && ` (rabattiert ${course.rabatt_hinweis})`}
-              {spaeterReduziert && ' – Preis passt sich der Anzahl verbleibender Stunden an'}
+              {quereinstiegHinweis(course, partner)}
             </>
           )}
         </p>
@@ -184,7 +206,6 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   // Reduzierung gilt für beide gebündelten Kurse einzeln - wer erst nach
   // Beginn eines oder beider Kurse bucht, zahlt entsprechend weniger.
   const effektivPreis = reduzierterPreis(paket.preis, paket.kurs1, paket.kurs2)
-  const reduziert = effektivPreis < Number(paket.preis)
 
   let titelText = paket.name
   if (ausgebucht) titelText = `Ausgebucht — ${paket.name}`
@@ -226,7 +247,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
         {kursZeile(paket.kurs1)}
         {kursZeile(paket.kurs2)}
         <p className={styles.termineText}>
-          Paketpreis: {effektivPreis}€{reduziert ? ' – Preis passt sich der Anzahl verbleibender Stunden an' : ''}
+          Paketpreis: {effektivPreis}€{quereinstiegHinweis(paket.kurs1, paket.kurs2)}
         </p>
       </div>
       {!ausgebucht && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
@@ -517,7 +538,7 @@ export default function Booking() {
       .then(({ data, error }) => {
         if (!active) return
         if (error) setLoadError(error.message)
-        else setCourses(data || [])
+        else setCourses((data || []).filter((c) => !kursBeendet(c)))
         setLoading(false)
       })
     return () => { active = false }
@@ -553,6 +574,8 @@ export default function Booking() {
             (p) =>
               p.kurs1 &&
               p.kurs2 &&
+              !kursBeendet(p.kurs1) &&
+              !kursBeendet(p.kurs2) &&
               (p.kurs1.course_type === courseTypeSlug || p.kurs2.course_type === courseTypeSlug)
           )
         setPakete(angereichert)
@@ -970,10 +993,8 @@ export default function Booking() {
             ))}
             <span className={styles.price}>
               €{effektivPreisPaket} (Paketpreis)
-              {effektivPreisPaket < Number(selectedPaket.preis) && (
-                <span className={styles.termineText}>
-                  {' '}– Preis passt sich der Anzahl verbleibender Stunden an
-                </span>
+              {quereinstiegHinweis(selectedPaket.kurs1, selectedPaket.kurs2) && (
+                <span className={styles.termineText}>{quereinstiegHinweis(selectedPaket.kurs1, selectedPaket.kurs2)}</span>
               )}
             </span>
           </>
@@ -1020,10 +1041,8 @@ export default function Booking() {
                   {rabattiertKurs && selectedCourse.rabatt_hinweis && (
                     <span className={styles.termineText}>{' '}(rabattiert {selectedCourse.rabatt_hinweis})</span>
                   )}
-                  {effektivPreisKurs < grundpreisKurs && (
-                    <span className={styles.termineText}>
-                      {' '}– Preis passt sich der Anzahl verbleibender Stunden an
-                    </span>
+                  {quereinstiegHinweis(selectedCourse, selectedPartner) && (
+                    <span className={styles.termineText}>{quereinstiegHinweis(selectedCourse, selectedPartner)}</span>
                   )}
                 </>
               )}
