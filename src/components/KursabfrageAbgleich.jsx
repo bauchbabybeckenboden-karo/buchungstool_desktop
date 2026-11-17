@@ -31,7 +31,14 @@ async function sollTermine(course, alleKurse) {
     return { termine: [...termine].sort(), quelle: 'Kursabfrage' }
   }
   if (course.ist_online) {
-    const partner = alleKurse.find((k) => k.online_partner_id === course.id)
+    // Mehrere Präsenzkurse können auf denselben Online-Kurs zeigen (z.B. alter und neuer
+    // Durchlauf): dann zählt nur der mit gleichem Start. Bleibt es mehrdeutig, wird nichts geändert.
+    let kandidaten = alleKurse.filter((k) => k.online_partner_id === course.id)
+    if (kandidaten.length > 1) kandidaten = kandidaten.filter((k) => k.start_datum === course.start_datum)
+    if (kandidaten.length > 1) {
+      throw new Error('Mehrere Präsenzkurse verweisen auf diesen Online-Kurs - bitte erst die Zuordnung prüfen.')
+    }
+    const partner = kandidaten[0]
     if (!partner || !Array.isArray(partner.termin_daten) || partner.termin_daten.length === 0) {
       throw new Error('Es wurde kein Präsenzkurs mit Terminen gefunden, der diesen Online-Kurs verwendet.')
     }
