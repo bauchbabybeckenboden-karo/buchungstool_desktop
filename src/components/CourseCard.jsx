@@ -4,6 +4,7 @@ import { getCourseTypeBySlug, COURSE_TYPES } from '../courseTypes.js'
 import { supabase } from '../supabase.js'
 import { calculatePreis } from '../pricing.js'
 import { formatDatumDE, ersterTermin } from '../dateUtils.js'
+import KursabfrageAbgleich from './KursabfrageAbgleich.jsx'
 
 // Kursname inkl. erstem Termin, für Auswahl-Dropdowns - ohne Datum sind
 // gleichnamige Kurse (z.B. mehrere "Mamafit Freitags"-Durchläufe) nicht zu
@@ -20,6 +21,10 @@ export default function CourseCard({ course, siblingCourses, alleKurse = [], onU
   const [participantsLoading, setParticipantsLoading] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const courseType = getCourseTypeBySlug(course.course_type)
+  // Sobald Einzeltermine vorhanden sind, werden Anzahl, Erster/Letzter Termin und
+  // Preis in der Datenbank automatisch daraus berechnet (Trigger kurse_abgeleitete_felder).
+  const hatEinzeltermine = Array.isArray(course.termin_daten) && course.termin_daten.length > 0
+  const autoHinweis = 'Wird automatisch aus den Einzelterminen berechnet'
 
   // Kompakte Datumsanzeige für die eingeklappte Kachel (nur Name & Daten,
   // siehe collapsed-Header unten) - erster bis letzter Termin, oder nur der
@@ -264,7 +269,7 @@ export default function CourseCard({ course, siblingCourses, alleKurse = [], onU
         </div>
         <div>
           <label>Anzahl Termine</label>
-          <input type="number" value={course.termine} onChange={(e) => handleField('termine', Number(e.target.value))} />
+          <input type="number" value={course.termine} disabled={hatEinzeltermine} title={hatEinzeltermine ? autoHinweis : undefined} onChange={(e) => handleField('termine', Number(e.target.value))} />
         </div>
         <div>
           <label>Dauer (min)</label>
@@ -317,11 +322,11 @@ export default function CourseCard({ course, siblingCourses, alleKurse = [], onU
         </div>
         <div>
           <label>Erster Termin</label>
-          <input type="date" value={course.start_datum || ''} onChange={(e) => handleField('start_datum', e.target.value || null)} />
+          <input type="date" value={course.start_datum || ''} disabled={hatEinzeltermine} title={hatEinzeltermine ? autoHinweis : undefined} onChange={(e) => handleField('start_datum', e.target.value || null)} />
         </div>
         <div>
           <label>Letzter Termin</label>
-          <input type="date" value={course.end_datum || ''} onChange={(e) => handleField('end_datum', e.target.value || null)} />
+          <input type="date" value={course.end_datum || ''} disabled={hatEinzeltermine} title={hatEinzeltermine ? autoHinweis : undefined} onChange={(e) => handleField('end_datum', e.target.value || null)} />
         </div>
         <div>
           <label>Uhrzeit (Start)</label>
@@ -341,6 +346,14 @@ export default function CourseCard({ course, siblingCourses, alleKurse = [], onU
           </div>
         </div>
       )}
+
+      <KursabfrageAbgleich
+        course={course}
+        alleKurse={alleKurse}
+        onSave={onSave}
+        onUpdateLocal={onUpdateLocal}
+        onReload={onReload}
+      />
 
       <div className={styles.participantsRow}>
         <span className={styles.badge}>
