@@ -30,8 +30,8 @@ export default function Admin() {
   // eingeklappt - für eine bessere Übersicht bei vielen Kursen). alleEingeklappt
   // ist die globale Vorgabe für den "Alle ein-/ausklappen"-Button,
   // kursOverrides erlaubt es, einzelne Kurse davon abweichend manuell
-  // auf-/zuzuklappen.
-  const [alleEingeklappt, setAlleEingeklappt] = useState(false)
+  // auf-/zuzuklappen. Standard (Wunsch Karo, 19.11.2026): beim Öffnen sind alle Kurse eingeklappt.
+  const [alleEingeklappt, setAlleEingeklappt] = useState(true)
   const [kursOverrides, setKursOverrides] = useState({})
 
   useEffect(() => {
