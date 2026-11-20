@@ -522,8 +522,12 @@ export default function Booking() {
     fetch(KARTEN_API, { method: 'POST', body: JSON.stringify({ aktion: 'info' }) })
       .then((r) => r.json())
       .then((d) => {
+        // Verfügbar, wenn die freie Karte oder mindestens ein festes Angebot für diesen Kurs noch zu haben ist
         const k = (d.kurse || []).find((x) => x.k === kuerzel)
-        if (!abgebrochen && k) setKartenVoll(!!k.voll)
+        const angebote = (d.angebote || []).filter((x) => (x.gilt || []).includes(kuerzel))
+        const gibtKarte = !!k || angebote.length > 0
+        const verfuegbar = (k && !k.voll) || angebote.some((x) => !x.voll)
+        if (!abgebrochen && gibtKarte) setKartenVoll(!verfuegbar)
       })
       .catch(() => {})
     return () => { abgebrochen = true }
