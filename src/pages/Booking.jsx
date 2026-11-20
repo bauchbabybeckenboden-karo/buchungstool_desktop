@@ -261,7 +261,7 @@ const KARTEN_API = 'https://script.google.com/macros/s/AKfycbx5f_l-6ESAvyYVLWuBB
 const KARTEN_SEITE = 'https://wunderwerk-frau-kurskarten.netlify.app/bestellen.html'
 
 // Zusätzliche Kachel: Karte (frei wählbare Einheiten). Blockiert keine normale Anmeldung.
-function KartenBox({ voll }) {
+function KartenBox({ voll, rest }) {
   return (
     <div
       className={`${styles.termineBox}${voll ? ' ' + styles.termineBoxDisabled : ''}`}
@@ -273,7 +273,7 @@ function KartenBox({ voll }) {
       <div className={styles.termineTextGroup}>
         <p className={styles.termineLabel}>Flexibel · Karte</p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>
-          {voll ? 'Karte: Ausverkauft' : 'Karte: Verfügbar'}
+          {voll ? 'Karte: Ausverkauft' : rest ? `Karte: noch ${rest} verfügbar` : 'Karte: Verfügbar'}
         </p>
         <p className={styles.termineText}>
           Du entscheidest Termin für Termin, ob Du vor Ort oder online dabei bist.
@@ -515,6 +515,7 @@ export default function Booking() {
   const [submitted, setSubmitted] = useState(false)
   // Karten-Verfügbarkeit (null = unbekannt oder keine Karte für diese Kursart)
   const [kartenVoll, setKartenVoll] = useState(null)
+  const [kartenRest, setKartenRest] = useState(0)
   useEffect(() => {
     const kuerzel = KARTEN_KUERZEL[courseTypeSlug]
     if (!kuerzel) return
@@ -526,7 +527,10 @@ export default function Booking() {
         const angebote = (d.angebote || []).filter((x) => (x.gilt || []).some((g) => kuerzel.includes(g)))
         const gibtKarte = angebote.length > 0
         const verfuegbar = angebote.some((x) => !x.voll)
-        if (!abgebrochen && gibtKarte) setKartenVoll(!verfuegbar)
+        // Restzahl nur, wenn alle passenden Angebote eine Obergrenze haben
+        const begrenzt = angebote.every((x) => x.max > 0)
+        const rest = begrenzt ? angebote.reduce((n, x) => n + Math.max(0, x.max - x.vergeben), 0) : 0
+        if (!abgebrochen && gibtKarte) { setKartenVoll(!verfuegbar); setKartenRest(rest) }
       })
       .catch(() => {})
     return () => { abgebrochen = true }
@@ -1277,7 +1281,7 @@ export default function Booking() {
             {selectedPaketId === p.id && anmeldeFormular}
           </Fragment>
         ))}
-        {kartenVoll !== null && !vorabKursId && <KartenBox voll={kartenVoll} />}
+        {kartenVoll !== null && !vorabKursId && <KartenBox voll={kartenVoll} rest={kartenRest} />}
       </div>
     </div>
   )
