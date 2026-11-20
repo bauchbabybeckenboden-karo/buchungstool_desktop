@@ -255,6 +255,35 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   )
 }
 
+// Karten (10er-/Kombikarten): Kursart im Buchungstool -> Kürzel im Karten-Skript
+const KARTEN_KUERZEL = { 'somatic-yoga': 'SOYO', 'koerpermitte-beckenboden': 'KOERPERMITTE' }
+const KARTEN_API = 'https://script.google.com/macros/s/AKfycbx5f_l-6ESAvyYVLWuBByBUVqjLrV17PfwLwDUz6gxSlZcjMfCrB7xi2Fcnd5KzH6mB/exec'
+const KARTEN_SEITE = 'https://wunderwerk-frau-kurskarten.netlify.app/bestellen.html'
+
+// Zusätzliche Kachel: Karte (frei wählbare Einheiten). Blockiert keine normale Anmeldung.
+function KartenBox({ voll }) {
+  return (
+    <div
+      className={`${styles.termineBox}${voll ? ' ' + styles.termineBoxDisabled : ''}`}
+      onClick={() => { if (!voll) window.location.href = KARTEN_SEITE }}
+      role="button"
+      tabIndex={voll ? -1 : 0}
+    >
+      <i className={`ti ti-ticket ${styles.termineIcon}`} />
+      <div className={styles.termineTextGroup}>
+        <p className={styles.termineLabel}>Flexibel · Karte</p>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>
+          {voll ? 'Karte: Ausverkauft' : 'Karte: Verfügbar'}
+        </p>
+        <p className={styles.termineText}>
+          Du entscheidest Termin für Termin, ob Du vor Ort oder online dabei bist.
+        </p>
+      </div>
+      {!voll && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
+    </div>
+  )
+}
+
 function ExtraFields({ courseTypeSlug, values, onChange }) {
   if (courseTypeSlug === 'schwangerfit') {
     return (
@@ -484,6 +513,21 @@ export default function Booking() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  // Karten-Verfügbarkeit (null = unbekannt oder keine Karte für diese Kursart)
+  const [kartenVoll, setKartenVoll] = useState(null)
+  useEffect(() => {
+    const kuerzel = KARTEN_KUERZEL[courseTypeSlug]
+    if (!kuerzel) return
+    let abgebrochen = false
+    fetch(KARTEN_API, { method: 'POST', body: JSON.stringify({ aktion: 'info' }) })
+      .then((r) => r.json())
+      .then((d) => {
+        const k = (d.kurse || []).find((x) => x.k === kuerzel)
+        if (!abgebrochen && k) setKartenVoll(!!k.voll)
+      })
+      .catch(() => {})
+    return () => { abgebrochen = true }
+  }, [courseTypeSlug])
 
   // Meldet die tatsächliche Seitenhöhe an ein einbettendes iFrame auf der
   // Homepage, damit dieses sich automatisch anpasst (die Buchungsseite
@@ -1230,6 +1274,7 @@ export default function Booking() {
             {selectedPaketId === p.id && anmeldeFormular}
           </Fragment>
         ))}
+        {kartenVoll !== null && !vorabKursId && <KartenBox voll={kartenVoll} />}
       </div>
     </div>
   )
