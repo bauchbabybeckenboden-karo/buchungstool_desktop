@@ -260,23 +260,25 @@ const KARTEN_KUERZEL = { 'somatic-yoga': ['SOYO'], 'koerpermitte-beckenboden': [
 const KARTEN_API = 'https://script.google.com/macros/s/AKfycbx5f_l-6ESAvyYVLWuBByBUVqjLrV17PfwLwDUz6gxSlZcjMfCrB7xi2Fcnd5KzH6mB/exec'
 const KARTEN_SEITE = 'https://wunderwerk-frau-kurskarten.netlify.app/bestellen.html'
 
-// Zusätzliche Kachel: Karte (frei wählbare Einheiten). Blockiert keine normale Anmeldung.
-function KartenBox({ voll, rest }) {
+// Zusätzliche Kachel je Karten-Angebot. Blockiert keine normale Anmeldung.
+function KartenBox({ angebot }) {
+  const voll = angebot.voll
+  const status = voll
+    ? 'Ausverkauft'
+    : angebot.max > 0 ? `Noch ${Math.max(0, angebot.max - angebot.vergeben)} verfügbar` : 'Verfügbar'
   return (
     <div
       className={`${styles.termineBox}${voll ? ' ' + styles.termineBoxDisabled : ''}`}
-      onClick={() => { if (!voll) window.location.href = KARTEN_SEITE }}
+      onClick={() => { if (!voll) window.location.href = `${KARTEN_SEITE}?a=${encodeURIComponent(angebot.id)}` }}
       role="button"
       tabIndex={voll ? -1 : 0}
     >
       <i className={`ti ti-ticket ${styles.termineIcon}`} />
       <div className={styles.termineTextGroup}>
         <p className={styles.termineLabel}>Flexibel · Karte</p>
-        <p className={`${styles.termineText} ${styles.termineTextBold}`}>
-          {voll ? 'Karte: Ausverkauft' : rest ? `Karte: noch ${rest} verfügbar` : 'Karte: Verfügbar'}
-        </p>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>{angebot.name}</p>
         <p className={styles.termineText}>
-          Du entscheidest Termin für Termin, ob Du vor Ort oder online dabei bist.
+          {status} · Du entscheidest Termin für Termin, ob Du vor Ort oder online dabei bist.
         </p>
       </div>
       {!voll && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
@@ -514,8 +516,7 @@ export default function Booking() {
   const [submitError, setSubmitError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
   // Karten-Verfügbarkeit (null = unbekannt oder keine Karte für diese Kursart)
-  const [kartenVoll, setKartenVoll] = useState(null)
-  const [kartenRest, setKartenRest] = useState(0)
+  const [kartenAngebote, setKartenAngebote] = useState([])
   useEffect(() => {
     const kuerzel = KARTEN_KUERZEL[courseTypeSlug]
     if (!kuerzel) return
@@ -523,14 +524,9 @@ export default function Booking() {
     fetch(KARTEN_API, { method: 'POST', body: JSON.stringify({ aktion: 'info' }) })
       .then((r) => r.json())
       .then((d) => {
-        // Verfügbar, wenn mindestens ein festes Angebot für diesen Kurs noch zu haben ist
+        // Je festem Angebot für diesen Kurs eine Kachel
         const angebote = (d.angebote || []).filter((x) => (x.gilt || []).some((g) => kuerzel.includes(g)))
-        const gibtKarte = angebote.length > 0
-        const verfuegbar = angebote.some((x) => !x.voll)
-        // Restzahl nur, wenn alle passenden Angebote eine Obergrenze haben
-        const begrenzt = angebote.every((x) => x.max > 0)
-        const rest = begrenzt ? angebote.reduce((n, x) => n + Math.max(0, x.max - x.vergeben), 0) : 0
-        if (!abgebrochen && gibtKarte) { setKartenVoll(!verfuegbar); setKartenRest(rest) }
+        if (!abgebrochen) setKartenAngebote(angebote)
       })
       .catch(() => {})
     return () => { abgebrochen = true }
@@ -1281,7 +1277,7 @@ export default function Booking() {
             {selectedPaketId === p.id && anmeldeFormular}
           </Fragment>
         ))}
-        {kartenVoll !== null && !vorabKursId && <KartenBox voll={kartenVoll} rest={kartenRest} />}
+        {!vorabKursId && kartenAngebote.map((a) => <KartenBox key={a.id} angebot={a} />)}
       </div>
     </div>
   )
