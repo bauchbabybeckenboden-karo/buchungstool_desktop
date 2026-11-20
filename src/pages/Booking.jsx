@@ -256,7 +256,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
 }
 
 // Karten (10er-/Kombikarten): Kursart im Buchungstool -> Kürzel im Karten-Skript
-const KARTEN_KUERZEL = { 'somatic-yoga': 'SOYO', 'koerpermitte-beckenboden': 'KOERPERMITTE' }
+const KARTEN_KUERZEL = { 'somatic-yoga': ['SOYO'], 'koerpermitte-beckenboden': ['KM_2027_01', 'KM_2027_04'] }
 const KARTEN_API = 'https://script.google.com/macros/s/AKfycbx5f_l-6ESAvyYVLWuBByBUVqjLrV17PfwLwDUz6gxSlZcjMfCrB7xi2Fcnd5KzH6mB/exec'
 const KARTEN_SEITE = 'https://wunderwerk-frau-kurskarten.netlify.app/bestellen.html'
 
@@ -523,7 +523,7 @@ export default function Booking() {
       .then((r) => r.json())
       .then((d) => {
         // Verfügbar, wenn mindestens ein festes Angebot für diesen Kurs noch zu haben ist
-        const angebote = (d.angebote || []).filter((x) => (x.gilt || []).includes(kuerzel))
+        const angebote = (d.angebote || []).filter((x) => (x.gilt || []).some((g) => kuerzel.includes(g)))
         const gibtKarte = angebote.length > 0
         const verfuegbar = angebote.some((x) => !x.voll)
         if (!abgebrochen && gibtKarte) setKartenVoll(!verfuegbar)
