@@ -282,6 +282,29 @@ function AnsichtLink({ text, hinweis, ziel }) {
   )
 }
 
+// Button unter jedem Kurs: online dabei sein (Anmeldung wie jede andere, auf den Online-Partnerkurs)
+function OnlineBox({ spotsLeft, selected, onSelect }) {
+  const voll = spotsLeft !== null && spotsLeft <= 0
+  const status = voll
+    ? 'Online ausgebucht'
+    : spotsLeft !== null ? `noch ${spotsLeft} ${spotsLeft === 1 ? 'Online-Platz' : 'Online-Plätze'} frei` : 'online möglich'
+  return (
+    <div
+      className={`${styles.termineBox}${selected ? ' ' + styles.termineBoxSelected : ''}${voll ? ' ' + styles.termineBoxDisabled : ''}`}
+      onClick={() => { if (!voll) onSelect() }}
+      role="button"
+      tabIndex={voll ? -1 : 0}
+    >
+      <i className={`ti ti-device-laptop ${styles.termineIcon}`} />
+      <div className={styles.termineTextGroup}>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>Ich möchte online dabei sein</p>
+        <p className={styles.termineText}>{status}</p>
+      </div>
+      {!voll && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
+    </div>
+  )
+}
+
 // Zusätzliche Kachel je Karten-Angebot. Blockiert keine normale Anmeldung.
 function KartenBox({ angebot }) {
   const voll = angebot.voll
@@ -526,6 +549,7 @@ export default function Booking() {
   const [pakete, setPakete] = useState([])
   const [bookingCounts, setBookingCounts] = useState({})
   const [partnerMap, setPartnerMap] = useState({})
+  const [onlineMap, setOnlineMap] = useState({})
   const [kalenderKursIds, setKalenderKursIds] = useState([])
   const [kalenderNur, setKalenderNur] = useState(false)
   const [partnerSel, setPartnerSel] = useState('')
@@ -682,6 +706,20 @@ export default function Booking() {
     return () => { active = false }
   }, [])
 
+  // Online-Partnerkurse der Kurse dieser Seite nachladen (für den Button "online dabei sein")
+  useEffect(() => {
+    const ids = [...new Set(courses.filter((c) => !c.ist_online && c.online_partner_id).map((c) => c.online_partner_id))]
+    if (vorabKursId || ids.length === 0) { setOnlineMap({}); return }
+    let active = true
+    supabase.from('kurse').select('*').in('id', ids).then(({ data }) => {
+      if (!active) return
+      const map = {}
+      ;(data || []).forEach((k) => { map[k.id] = k })
+      setOnlineMap(map)
+    })
+    return () => { active = false }
+  }, [courses, vorabKursId])
+
   // Partnerkurse von Kombikursen (z.B. Mamafit zu einem Körpermitte-Kurs)
   // nachladen - sie liegen nicht zwingend in der oben geladenen Liste.
   useEffect(() => {
@@ -726,7 +764,7 @@ export default function Booking() {
   }
   const istKombiKurs = (c) => Boolean(c) && ((c.zusatz_course_types || []).length > 0 || partnerIdsVon(c).length > 0)
 
-  const selectedCourse = courses.find((c) => c.id === selectedId)
+  const selectedCourse = courses.find((c) => c.id === selectedId) || onlineMap[selectedId]
   // Bei einem Kurs mit Partnerkurs gibt es zwei Kacheln: "nur dieser Kurs" (Einzelpreis)
   // und die Kombi mit Partnerkurs. soloModus merkt sich, welche gewählt ist.
   const istSolo = !partnerSel && partnerListeVon(selectedCourse).length > 0
@@ -776,7 +814,11 @@ export default function Booking() {
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
-  const primaerKurse = (vorabKursId ? courses : courses.filter((c) => c.course_type === courseTypeSlug)).sort(onlineZuletzt)
+  // Online-Kurse, die als Button unter ihrem Vor-Ort-Kurs erscheinen, bekommen keine eigene Kachel
+  const onlineAlsButton = new Set(
+    vorabKursId ? [] : courses.filter((c) => !c.ist_online && c.online_partner_id && onlineMap[c.online_partner_id]).map((c) => c.online_partner_id)
+  )
+  const primaerKurse = (vorabKursId ? courses : courses.filter((c) => c.course_type === courseTypeSlug && !onlineAlsButton.has(c.id))).sort(onlineZuletzt)
   // Ein Kurs, der mit einem Kurs dieser Seite per Partnerkurs verknüpft ist, wird
   // schon über dessen Kombi-Kachel angeboten - dann keine zweite "PLUS"-Kachel.
   const komboKurse = vorabKursId
@@ -1268,6 +1310,16 @@ export default function Booking() {
               />
               )}
               {selectedId === c.id && !partnerSel && anmeldeFormular}
+              {!(kombiGetrennt && kombiAnsicht) && !c.ist_online && onlineMap[c.online_partner_id] && (
+                <Fragment>
+                  <OnlineBox
+                    spotsLeft={platzFrei(onlineMap[c.online_partner_id])}
+                    selected={selectedId === c.online_partner_id}
+                    onSelect={() => waehleKurs(c.online_partner_id, '')}
+                  />
+                  {selectedId === c.online_partner_id && anmeldeFormular}
+                </Fragment>
+              )}
               {(!kombiGetrennt || kombiAnsicht) && ps.map((p) => (
                 <Fragment key={p.id}>
                   <TerminBox
