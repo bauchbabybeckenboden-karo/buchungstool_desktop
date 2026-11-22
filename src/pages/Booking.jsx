@@ -260,6 +260,28 @@ const KARTEN_KUERZEL = { 'somatic-yoga': ['SOYO'], 'koerpermitte-beckenboden': [
 const KARTEN_API = 'https://script.google.com/macros/s/AKfycbx5f_l-6ESAvyYVLWuBByBUVqjLrV17PfwLwDUz6gxSlZcjMfCrB7xi2Fcnd5KzH6mB/exec'
 const KARTEN_SEITE = 'https://wunderwerk-frau-kurskarten.netlify.app/bestellen.html'
 
+// Kurstypen, bei denen Kombi-Kacheln auf einer eigenen Ansicht stehen (?ansicht=kombi)
+const KOMBI_EXTRA_SEITE = ['somatic-yoga']
+
+// Kachel, die zur Kombi-Ansicht führt (bzw. zurück). Gleiches Fenster, kein Pop-up.
+function AnsichtLink({ text, hinweis, ziel }) {
+  return (
+    <div
+      className={styles.termineBox}
+      onClick={() => { window.location.href = ziel }}
+      role="button"
+      tabIndex={0}
+    >
+      <i className={`ti ti-calendar-plus ${styles.termineIcon}`} />
+      <div className={styles.termineTextGroup}>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>{text}</p>
+        <p className={styles.termineText}>{hinweis}</p>
+      </div>
+      <i className={`ti ti-arrow-right ${styles.termineArrow}`} />
+    </div>
+  )
+}
+
 // Zusätzliche Kachel je Karten-Angebot. Blockiert keine normale Anmeldung.
 function KartenBox({ angebot }) {
   const voll = angebot.voll
@@ -495,6 +517,7 @@ export default function Booking() {
   // Die Kurs-ID ist eine zufällige UUID und damit nicht erratbar.
   const [searchParams] = useSearchParams()
   const vorabParam = searchParams.get('kurs') || ''
+  const kombiAnsicht = searchParams.get('ansicht') === 'kombi'
   const vorabKursId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vorabParam) ? vorabParam : ''
 
   const [courses, setCourses] = useState([])
@@ -762,6 +785,9 @@ export default function Booking() {
         .filter((c) => c.course_type !== courseTypeSlug)
         .filter((c) => !primaerKurse.some((p) => partnerIdsVon(p).includes(c.id) || partnerIdsVon(c).includes(p.id)))
         .sort(onlineZuletzt)
+
+  const kombiGetrennt = KOMBI_EXTRA_SEITE.includes(courseTypeSlug) && !vorabKursId
+  const hatKombis = primaerKurse.some((c) => partnerListeVon(c).length > 0)
 
   function platzFrei(course) {
     if (!course.max_teilnehmerinnen) return null
@@ -1224,10 +1250,14 @@ export default function Booking() {
         {!loading && !loadError && courses.length === 0 && (
           <p className={styles.emptyLight}>Aktuell sind keine {courseType.label}-Kurse zur Anmeldung freigegeben.</p>
         )}
+        {kombiGetrennt && kombiAnsicht && (
+          <AnsichtLink text="Zurück zu den Einzelkursen" hinweis="Alle Kurse ohne Kombi" ziel={window.location.pathname} />
+        )}
         {primaerKurse.map((c) => {
           const ps = partnerListeVon(c)
           return (
             <Fragment key={c.id}>
+              {!(kombiGetrennt && kombiAnsicht && ps.length > 0) && (
               <TerminBox
                 course={c}
                 solo={ps.length > 0}
@@ -1236,8 +1266,9 @@ export default function Booking() {
                 selected={selectedId === c.id && !partnerSel}
                 onSelect={() => waehleKurs(c.id, '')}
               />
+              )}
               {selectedId === c.id && !partnerSel && anmeldeFormular}
-              {ps.map((p) => (
+              {(!kombiGetrennt || kombiAnsicht) && ps.map((p) => (
                 <Fragment key={p.id}>
                   <TerminBox
                     course={c}
@@ -1277,7 +1308,10 @@ export default function Booking() {
             {selectedPaketId === p.id && anmeldeFormular}
           </Fragment>
         ))}
-        {!vorabKursId && kartenAngebote.map((a) => <KartenBox key={a.id} angebot={a} />)}
+        {!vorabKursId && !(kombiGetrennt && kombiAnsicht) && kartenAngebote.map((a) => <KartenBox key={a.id} angebot={a} />)}
+        {kombiGetrennt && !kombiAnsicht && hatKombis && (
+          <AnsichtLink text="Kombikurse" hinweis="Somatic Yoga zusammen mit Körpermitte & Beckenboden" ziel={`${window.location.pathname}?ansicht=kombi`} />
+        )}
       </div>
     </div>
   )
