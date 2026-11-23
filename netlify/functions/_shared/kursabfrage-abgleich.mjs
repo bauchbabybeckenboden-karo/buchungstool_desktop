@@ -10,7 +10,8 @@
 // - Ein Kurs-Durchlauf geht vom Startdatum bis zur Notiz "letzte Kursstunde"
 //   (bbb_notizen_v2). Termine = alle Termine der Gruppe in diesem Zeitraum,
 //   ohne die gestrichenen (bbb_removed_v2).
-// - uhrzeit: Uhrzeit der Gruppe, die ab Kursstart gilt (zeitphasen).
+// - uhrzeit: Uhrzeit der Gruppe (zeitphasen), die am naechsten anstehenden
+//   Kurstermin gilt - vor Kursbeginn also die Zeit am ersten Termin.
 // - ausgefallen_daten: alle gestrichenen Termine der Gruppe (wie bisher).
 // - Online-Partner (Ziel von online_partner_id) uebernehmen Termine, Uhrzeit
 //   und Ausfaelle ihres Praesenzkurses, auch ohne eigenen source_gruppen_key.
@@ -67,7 +68,7 @@ function istBeendet(kurs, heute) {
 }
 
 // Soll-Werte fuer einen Kurs mit source_gruppen_key.
-function sollAusKursabfrage(kurs, quelle, hinweise) {
+function sollAusKursabfrage(kurs, quelle, hinweise, heute) {
   const teile = zerlegeKey(kurs.source_gruppen_key);
   if (!teile) {
     hinweise.push({ kurs: kurs.id, name: kurs.name, hinweis: "source_gruppen_key hat kein gueltiges Format" });
@@ -81,7 +82,7 @@ function sollAusKursabfrage(kurs, quelle, hinweise) {
 
   const gestrichen = [...new Set(liste(quelle.removed[teile.gid]))].filter((d) => DATUM_RE.test(d)).sort();
   const soll = {
-    uhrzeit: uhrzeitFuer(gruppe, teile.start),
+    uhrzeit: null, // wird unten anhand der Termine bestimmt
     ausgefallen_daten: gestrichen,
     termin_daten: null, // null = Termine nicht aendern
   };
@@ -95,6 +96,16 @@ function sollAusKursabfrage(kurs, quelle, hinweise) {
   } else {
     soll.termin_daten = [...new Set(termine)].sort();
   }
+
+  // Uhrzeit: die am naechsten anstehenden Termin gueltige Zeit. So passt sich
+  // auch ein laufender Kurs an, wenn sich die Zeit mittendrin aendert.
+  // Vor Kursbeginn ist das der erste Termin, nach dem letzten Termin der letzte.
+  const termineFuerZeit = soll.termin_daten || liste(kurs.termin_daten).filter((d) => DATUM_RE.test(d)).sort();
+  const bezug =
+    termineFuerZeit.find((d) => d >= heute) ||
+    termineFuerZeit[termineFuerZeit.length - 1] ||
+    teile.start;
+  soll.uhrzeit = uhrzeitFuer(gruppe, bezug);
   return soll;
 }
 
@@ -144,7 +155,7 @@ export function berechneAbgleich(kurse, quelle, heute = heuteISOBerlin()) {
   // 1) Kurse mit eigenem source_gruppen_key
   for (const kurs of kurse) {
     if (!kurs.source_gruppen_key || istBeendet(kurs, heute)) continue;
-    const soll = sollAusKursabfrage(kurs, quelle, hinweise);
+    const soll = sollAusKursabfrage(kurs, quelle, hinweise, heute);
     if (soll) sollProKurs.set(kurs.id, soll);
   }
 
