@@ -23,3 +23,6 @@
 ## Kurse und Termine (nur dieses Repo)
 - Terminzahl, Start, Ende und Preis nie von Hand pflegen. Quelle sind die Einzeltermine (termin_daten) in Supabase.
 - Der Trigger kurse_abgeleitete_felder in Supabase leitet Terminzahl, Start, Ende und Preis daraus ab.
+- Jeder buchbare Präsenzkurs hat IMMER einen Online-Partner (kurse.online_partner_id). Neue Funktionen und Änderungen müssen das berücksichtigen.
+- Der Trigger kurse_online_partner_anlegen legt ihn automatisch an, sobald ein Präsenzkurs sichtbar ist (Name + " Online", gleiche Termine/Uhrzeit/Preis, 10 Plätze, nicht sichtbar), oder verknüpft einen vorhandenen gleichnamigen Online-Kurs.
+- Der Trigger kurse_online_partner_preis überträgt Preis und Rabatt des Präsenzkurses auf den Online-Partner. Termine, Uhrzeit und Ausfälle gleicht kursabfrage-sync ab.
