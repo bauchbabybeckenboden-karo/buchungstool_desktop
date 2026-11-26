@@ -255,6 +255,82 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   )
 }
 
+// Karten (10er-/Kombikarten): Kursart im Buchungstool -> Kürzel im Karten-Skript
+const KARTEN_KUERZEL = { 'somatic-yoga': ['SOYO'], 'koerpermitte-beckenboden': ['KM_2027_01', 'KM_2027_04'] }
+const KARTEN_API = 'https://script.google.com/macros/s/AKfycbx5f_l-6ESAvyYVLWuBByBUVqjLrV17PfwLwDUz6gxSlZcjMfCrB7xi2Fcnd5KzH6mB/exec'
+const KARTEN_SEITE = 'https://wunderwerk-frau-kurskarten.netlify.app/bestellen.html'
+
+// Kurstypen, bei denen Kombi-Kacheln auf einer eigenen Ansicht stehen (?ansicht=kombi)
+const KOMBI_EXTRA_SEITE = ['somatic-yoga']
+
+// Kachel, die zur Kombi-Ansicht führt (bzw. zurück). Gleiches Fenster, kein Pop-up.
+function AnsichtLink({ text, hinweis, ziel }) {
+  return (
+    <div
+      className={styles.termineBox}
+      onClick={() => { window.location.href = ziel }}
+      role="button"
+      tabIndex={0}
+    >
+      <i className={`ti ti-calendar-plus ${styles.termineIcon}`} />
+      <div className={styles.termineTextGroup}>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>{text}</p>
+        <p className={styles.termineText}>{hinweis}</p>
+      </div>
+      <i className={`ti ti-arrow-right ${styles.termineArrow}`} />
+    </div>
+  )
+}
+
+// Button unter jedem Kurs: online dabei sein (Anmeldung wie jede andere, auf den Online-Partnerkurs)
+function OnlineBox({ spotsLeft, selected, onSelect }) {
+  const voll = spotsLeft !== null && spotsLeft <= 0
+  const status = voll
+    ? 'Online ausgebucht'
+    : spotsLeft !== null ? `noch ${spotsLeft} ${spotsLeft === 1 ? 'Online-Platz' : 'Online-Plätze'} frei` : 'online möglich'
+  return (
+    <div
+      className={`${styles.termineBox}${selected ? ' ' + styles.termineBoxSelected : ''}${voll ? ' ' + styles.termineBoxDisabled : ''}`}
+      onClick={() => { if (!voll) onSelect() }}
+      role="button"
+      tabIndex={voll ? -1 : 0}
+    >
+      <i className={`ti ti-device-laptop ${styles.termineIcon}`} />
+      <div className={styles.termineTextGroup}>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>Ich möchte online dabei sein</p>
+        <p className={styles.termineText}>{status}</p>
+      </div>
+      {!voll && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
+    </div>
+  )
+}
+
+// Zusätzliche Kachel je Karten-Angebot. Blockiert keine normale Anmeldung.
+function KartenBox({ angebot }) {
+  const voll = angebot.voll
+  const status = voll
+    ? 'Ausverkauft'
+    : angebot.max > 0 ? `Noch ${Math.max(0, angebot.max - angebot.vergeben)} verfügbar` : 'Verfügbar'
+  return (
+    <div
+      className={`${styles.termineBox}${voll ? ' ' + styles.termineBoxDisabled : ''}`}
+      onClick={() => { if (!voll) window.location.href = `${KARTEN_SEITE}?a=${encodeURIComponent(angebot.id)}` }}
+      role="button"
+      tabIndex={voll ? -1 : 0}
+    >
+      <i className={`ti ti-ticket ${styles.termineIcon}`} />
+      <div className={styles.termineTextGroup}>
+        <p className={styles.termineLabel}>Flexibel · Karte</p>
+        <p className={`${styles.termineText} ${styles.termineTextBold}`}>{angebot.name}</p>
+        <p className={styles.termineText}>
+          {status} · Du entscheidest Termin für Termin, ob Du vor Ort oder online dabei bist.
+        </p>
+      </div>
+      {!voll && <i className={`ti ti-arrow-right ${styles.termineArrow}`} />}
+    </div>
+  )
+}
+
 function ExtraFields({ courseTypeSlug, values, onChange }) {
   if (courseTypeSlug === 'schwangerfit') {
     return (
@@ -464,6 +540,7 @@ export default function Booking() {
   // Die Kurs-ID ist eine zufällige UUID und damit nicht erratbar.
   const [searchParams] = useSearchParams()
   const vorabParam = searchParams.get('kurs') || ''
+  const kombiAnsicht = searchParams.get('ansicht') === 'kombi'
   const vorabKursId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(vorabParam) ? vorabParam : ''
 
   const [courses, setCourses] = useState([])
@@ -472,6 +549,7 @@ export default function Booking() {
   const [pakete, setPakete] = useState([])
   const [bookingCounts, setBookingCounts] = useState({})
   const [partnerMap, setPartnerMap] = useState({})
+  const [onlineMap, setOnlineMap] = useState({})
   const [kalenderKursIds, setKalenderKursIds] = useState([])
   const [kalenderNur, setKalenderNur] = useState(false)
   const [partnerSel, setPartnerSel] = useState('')
@@ -484,6 +562,22 @@ export default function Booking() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
   const [submitted, setSubmitted] = useState(false)
+  // Karten-Verfügbarkeit (null = unbekannt oder keine Karte für diese Kursart)
+  const [kartenAngebote, setKartenAngebote] = useState([])
+  useEffect(() => {
+    const kuerzel = KARTEN_KUERZEL[courseTypeSlug]
+    if (!kuerzel) return
+    let abgebrochen = false
+    fetch(KARTEN_API, { method: 'POST', body: JSON.stringify({ aktion: 'info' }) })
+      .then((r) => r.json())
+      .then((d) => {
+        // Je festem Angebot für diesen Kurs eine Kachel
+        const angebote = (d.angebote || []).filter((x) => (x.gilt || []).some((g) => kuerzel.includes(g)))
+        if (!abgebrochen) setKartenAngebote(angebote)
+      })
+      .catch(() => {})
+    return () => { abgebrochen = true }
+  }, [courseTypeSlug])
 
   // Meldet die tatsächliche Seitenhöhe an ein einbettendes iFrame auf der
   // Homepage, damit dieses sich automatisch anpasst (die Buchungsseite
@@ -612,6 +706,20 @@ export default function Booking() {
     return () => { active = false }
   }, [])
 
+  // Online-Partnerkurse der Kurse dieser Seite nachladen (für den Button "online dabei sein")
+  useEffect(() => {
+    const ids = [...new Set(courses.filter((c) => !c.ist_online && c.online_partner_id).map((c) => c.online_partner_id))]
+    if (vorabKursId || ids.length === 0) { setOnlineMap({}); return }
+    let active = true
+    supabase.from('kurse').select('*').in('id', ids).then(({ data }) => {
+      if (!active) return
+      const map = {}
+      ;(data || []).forEach((k) => { map[k.id] = k })
+      setOnlineMap(map)
+    })
+    return () => { active = false }
+  }, [courses, vorabKursId])
+
   // Partnerkurse von Kombikursen (z.B. Mamafit zu einem Körpermitte-Kurs)
   // nachladen - sie liegen nicht zwingend in der oben geladenen Liste.
   useEffect(() => {
@@ -656,7 +764,7 @@ export default function Booking() {
   }
   const istKombiKurs = (c) => Boolean(c) && ((c.zusatz_course_types || []).length > 0 || partnerIdsVon(c).length > 0)
 
-  const selectedCourse = courses.find((c) => c.id === selectedId)
+  const selectedCourse = courses.find((c) => c.id === selectedId) || onlineMap[selectedId]
   // Bei einem Kurs mit Partnerkurs gibt es zwei Kacheln: "nur dieser Kurs" (Einzelpreis)
   // und die Kombi mit Partnerkurs. soloModus merkt sich, welche gewählt ist.
   const istSolo = !partnerSel && partnerListeVon(selectedCourse).length > 0
@@ -706,7 +814,11 @@ export default function Booking() {
   // Hauptkurse (diese Seite ist ihr eigentlicher Kurstyp) und Kombi-Kurse
   // (dieser Kurstyp ist hier nur als Zusatzoption angehängt) getrennt
   // aufbereiten - je eine eigene Kachel mit passender Beschriftung.
-  const primaerKurse = (vorabKursId ? courses : courses.filter((c) => c.course_type === courseTypeSlug)).sort(onlineZuletzt)
+  // Online-Kurse, die als Button unter ihrem Vor-Ort-Kurs erscheinen, bekommen keine eigene Kachel
+  const onlineAlsButton = new Set(
+    vorabKursId ? [] : courses.filter((c) => !c.ist_online && c.online_partner_id && onlineMap[c.online_partner_id]).map((c) => c.online_partner_id)
+  )
+  const primaerKurse = (vorabKursId ? courses : courses.filter((c) => c.course_type === courseTypeSlug && !onlineAlsButton.has(c.id))).sort(onlineZuletzt)
   // Ein Kurs, der mit einem Kurs dieser Seite per Partnerkurs verknüpft ist, wird
   // schon über dessen Kombi-Kachel angeboten - dann keine zweite "PLUS"-Kachel.
   const komboKurse = vorabKursId
@@ -715,6 +827,9 @@ export default function Booking() {
         .filter((c) => c.course_type !== courseTypeSlug)
         .filter((c) => !primaerKurse.some((p) => partnerIdsVon(p).includes(c.id) || partnerIdsVon(c).includes(p.id)))
         .sort(onlineZuletzt)
+
+  const kombiGetrennt = KOMBI_EXTRA_SEITE.includes(courseTypeSlug) && !vorabKursId
+  const hatKombis = primaerKurse.some((c) => partnerListeVon(c).length > 0)
 
   function platzFrei(course) {
     if (!course.max_teilnehmerinnen) return null
@@ -1177,10 +1292,14 @@ export default function Booking() {
         {!loading && !loadError && courses.length === 0 && (
           <p className={styles.emptyLight}>Aktuell sind keine {courseType.label}-Kurse zur Anmeldung freigegeben.</p>
         )}
+        {kombiGetrennt && kombiAnsicht && (
+          <AnsichtLink text="Zurück zu den Einzelkursen" hinweis="Alle Kurse ohne Kombi" ziel={window.location.pathname} />
+        )}
         {primaerKurse.map((c) => {
           const ps = partnerListeVon(c)
           return (
             <Fragment key={c.id}>
+              {!(kombiGetrennt && kombiAnsicht && ps.length > 0) && (
               <TerminBox
                 course={c}
                 solo={ps.length > 0}
@@ -1189,8 +1308,19 @@ export default function Booking() {
                 selected={selectedId === c.id && !partnerSel}
                 onSelect={() => waehleKurs(c.id, '')}
               />
+              )}
               {selectedId === c.id && !partnerSel && anmeldeFormular}
-              {ps.map((p) => (
+              {!(kombiGetrennt && kombiAnsicht) && !c.ist_online && onlineMap[c.online_partner_id] && (
+                <Fragment>
+                  <OnlineBox
+                    spotsLeft={platzFrei(onlineMap[c.online_partner_id])}
+                    selected={selectedId === c.online_partner_id}
+                    onSelect={() => waehleKurs(c.online_partner_id, '')}
+                  />
+                  {selectedId === c.online_partner_id && anmeldeFormular}
+                </Fragment>
+              )}
+              {(!kombiGetrennt || kombiAnsicht) && ps.map((p) => (
                 <Fragment key={p.id}>
                   <TerminBox
                     course={c}
@@ -1230,6 +1360,10 @@ export default function Booking() {
             {selectedPaketId === p.id && anmeldeFormular}
           </Fragment>
         ))}
+        {!vorabKursId && !(kombiGetrennt && kombiAnsicht) && kartenAngebote.map((a) => <KartenBox key={a.id} angebot={a} />)}
+        {kombiGetrennt && !kombiAnsicht && hatKombis && (
+          <AnsichtLink text="Kombikurse" hinweis="Somatic Yoga zusammen mit Körpermitte & Beckenboden" ziel={`${window.location.pathname}?ansicht=kombi`} />
+        )}
       </div>
     </div>
   )
