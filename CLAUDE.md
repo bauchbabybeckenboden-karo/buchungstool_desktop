@@ -26,3 +26,4 @@
 - Jeder buchbare Präsenzkurs hat IMMER einen Online-Partner (kurse.online_partner_id). Neue Funktionen und Änderungen müssen das berücksichtigen.
 - Der Trigger kurse_online_partner_anlegen legt ihn automatisch an, sobald ein Präsenzkurs sichtbar ist (Name + " Online", gleiche Termine/Uhrzeit/Preis, 10 Plätze, nicht sichtbar), oder verknüpft einen vorhandenen gleichnamigen Online-Kurs.
 - Der Trigger kurse_online_partner_preis überträgt Preis und Rabatt des Präsenzkurses auf den Online-Partner. Termine, Uhrzeit und Ausfälle gleicht kursabfrage-sync ab.
+- Zu jedem Präsenz-Paket (kurs_pakete) gibt es automatisch das Online-Paket aus den beiden Online-Partnern (Trigger kurs_pakete_online_anlegen, Name + " Online"). Preis und "Auf Website anzeigen" überträgt kurs_pakete_online_angleichen.
