@@ -111,7 +111,11 @@ function TerminBox({ course, partner, solo, label, comboLabel, spotsLeft, select
   // klar, dass man hier später einsteigt statt von Anfang an dabei zu sein.
   const bereitsGestartet = vergangeneTermine(course) > 0
   const kombiMit = comboLabel || solo ? [] : (course.zusatz_course_types || []).map((slug) => getCourseTypeBySlug(slug)?.label || slug)
-  const beschriftungBasis = label ? `${label} · ${course.name}` : course.name
+  // "Vor Ort" / "Online" vorne in der Beschriftung, damit auf einen Blick klar
+  // ist, welche Variante die Kachel ist. Online-Kurse, deren Name schon
+  // "Online" enthält, bekommen den Zusatz nicht doppelt.
+  const modus = course.ist_online ? (/\bonline\b/i.test(course.name || '') ? '' : 'Online') : 'Vor Ort'
+  const beschriftungBasis = [modus, label, course.name].filter(Boolean).join(' · ')
   const beschriftung = solo
     ? beschriftungBasis
     : kombiMit.length > 0 ? `${beschriftungBasis} · Kombi mit ${kombiMit.join(' & ')}` : beschriftungBasis
@@ -206,6 +210,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
   // Reduzierung gilt für beide gebündelten Kurse einzeln - wer erst nach
   // Beginn eines oder beider Kurse bucht, zahlt entsprechend weniger.
   const effektivPreis = reduzierterPreis(paket.preis, paket.kurs1, paket.kurs2)
+  const paketOnline = !!(paket.kurs1?.ist_online && paket.kurs2?.ist_online)
 
   let titelText = paket.name
   if (ausgebucht) titelText = `Ausgebucht — ${paket.name}`
@@ -242,7 +247,7 @@ function PaketBox({ paket, spotsLeft, selected, onSelect }) {
     >
       <i className={`ti ti-box ${styles.termineIcon}`} />
       <div className={styles.termineTextGroup}>
-        <p className={styles.termineLabel}>Kurs-Paket</p>
+        <p className={styles.termineLabel}>Kurs-Paket · {paketOnline ? 'Online' : 'Vor Ort'}</p>
         <p className={`${styles.termineText} ${styles.termineTextBold}`}>{titelText}</p>
         {kursZeile(paket.kurs1)}
         {kursZeile(paket.kurs2)}
@@ -1291,6 +1296,9 @@ export default function Booking() {
         )}
         {!loading && !loadError && courses.length === 0 && (
           <p className={styles.emptyLight}>Aktuell sind keine {courseType.label}-Kurse zur Anmeldung freigegeben.</p>
+        )}
+        {!loading && !loadError && !vorabKursId && courses.length > 0 && (
+          <p className={styles.emptyLight}>Alle Kurse kannst Du vor Ort oder online buchen: Wähle einfach die passende Kachel.</p>
         )}
         {kombiGetrennt && kombiAnsicht && (
           <AnsichtLink text="Zurück zu den Einzelkursen" hinweis="Alle Kurse ohne Kombi" ziel={window.location.pathname} />
